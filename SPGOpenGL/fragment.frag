@@ -30,7 +30,13 @@ vec3 lighting(vec3 objColor, vec3 p, vec3 n, vec3 lPos, vec3 vPos,
 void main()
 {
     if (isGrass == 1 && shellHeight > 0.0) {
-        float noiseVal = texture(noiseTexture, texCoord * 25.0).r; 
+        vec2 uv1 = texCoord * 17.0;
+vec2 uv2 = texCoord * 43.0 + vec2(0.37, 0.71);
+
+float n1 = texture(noiseTexture, uv1).r;
+float n2 = texture(noiseTexture, uv2).r;
+float noiseVal = mix(n1, n2, 0.35);
+
         if (noiseVal < pow(shellHeight, 1.2)) {
             discard;
         }
@@ -41,11 +47,11 @@ void main()
     
     vec3 finalColor = objectColor;
     if (isGrass == 1) {
-        vec3 rootColor = objectColor * 0.1;
-        vec3 tipColor = objectColor * 1.3; 
-        
-        float colorCurve = pow(shellHeight, 0.6); 
-        finalColor = mix(rootColor, tipColor, colorCurve);
+        vec3 rootColor = vec3(0.07, 0.18, 0.05);
+        vec3 tipColor = vec3(0.34, 0.58, 0.22);
+        float colorCurve = pow(shellHeight, 0.6);
+        float colorVariation = texture(noiseTexture, texCoord * 7.0 + vec2(0.19, 0.43)).r;
+        finalColor = mix(rootColor, tipColor, colorCurve) * mix(0.82, 1.08, colorVariation);
     }
 
     vec3 color1 = lighting(finalColor, pos, normal, lightPos, viewPos,
@@ -53,4 +59,15 @@ void main()
     vec3 color2 = lighting(finalColor, pos, normal, viewPos, viewPos,
                            vec3(0.0), vec3(0.2), specular, 4.0);
     fragColor = vec4(clamp(color1 + color2, 0.0, 1.0), 1.0);
+
+    vec3 litColor = clamp(color1 + color2, 0.0, 1.0);
+
+    float dist = distance(viewPos, pos);
+    float fog = smoothstep(450.0, 1200.0, dist);
+
+    vec3 skyColor = vec3(0.5, 0.8, 0.9);
+    vec3 finalFogColor = mix(litColor, skyColor, fog * 0.45);
+
+    fragColor = vec4(finalFogColor, 1.0);
+
 }

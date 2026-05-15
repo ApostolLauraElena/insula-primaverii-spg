@@ -44,9 +44,9 @@ glm::vec3 lightPos(0, 20000, 0);
 glm::vec3 viewPos(2, 3, 6);
 
 
-// Genereaza un plan plat verde
+
 void createFlatTerrain(float size, int subdiviziuni,
-    std::vector<glm::vec3>& out_v, std::vector<glm::vec3>& out_n) {
+    std::vector<glm::vec3>& out_v, std::vector<glm::vec3>& out_n, std::vector<glm::vec2>& out_uv) {
 
     float pas = size / subdiviziuni;
     float offset = size / 2.0f;
@@ -59,51 +59,120 @@ void createFlatTerrain(float size, int subdiviziuni,
             glm::vec3 v3(x * pas - offset, 0.0f, (z + 1) * pas - offset);
             glm::vec3 v4((x + 1) * pas - offset, 0.0f, (z + 1) * pas - offset);
 
-            // Triunghi 1
-            out_v.push_back(v1); out_n.push_back(normala);
-            out_v.push_back(v3); out_n.push_back(normala);
-            out_v.push_back(v2); out_n.push_back(normala);
-            // Triunghi 2
-            out_v.push_back(v2); out_n.push_back(normala);
-            out_v.push_back(v3); out_n.push_back(normala);
-            out_v.push_back(v4); out_n.push_back(normala);
-        }
-    }
-    std::cout << "Plan plat generat! Varfuri: " << out_v.size() << "\n";
-}
-
-
-void createFlatTerrain(float size, int subdiviziuni,
-    std::vector<glm::vec3>& out_v, std::vector<glm::vec3>& out_n, std::vector<glm::vec2>& out_uv) { // NOU: out_uv
-
-    float pas = size / subdiviziuni;
-    float offset = size / 2.0f;
-    glm::vec3 normala(0.0f, 1.0f, 0.0f);
-
-    for (int z = 0; z < subdiviziuni; z++) {
-        for (int x = 0; x < subdiviziuni; x++) {
-            glm::vec3 v1(x * pas - offset, 0.0f, z * pas - offset);
-            glm::vec3 v2((x + 1) * pas - offset, 0.0f, z * pas - offset);
-            glm::vec3 v3(x * pas - offset, 0.0f, (z + 1) * pas - offset);
-            glm::vec3 v4((x + 1) * pas - offset, 0.0f, (z + 1) * pas - offset);
-
-            // Gener�m coordonatele UV (�ntre 0.0 ?i 1.0)
             glm::vec2 uv1((float)x / subdiviziuni, (float)z / subdiviziuni);
             glm::vec2 uv2((float)(x + 1) / subdiviziuni, (float)z / subdiviziuni);
             glm::vec2 uv3((float)x / subdiviziuni, (float)(z + 1) / subdiviziuni);
             glm::vec2 uv4((float)(x + 1) / subdiviziuni, (float)(z + 1) / subdiviziuni);
 
-            // Triunghi 1
             out_v.push_back(v1); out_n.push_back(normala); out_uv.push_back(uv1);
             out_v.push_back(v3); out_n.push_back(normala); out_uv.push_back(uv3);
             out_v.push_back(v2); out_n.push_back(normala); out_uv.push_back(uv2);
-            // Triunghi 2
             out_v.push_back(v2); out_n.push_back(normala); out_uv.push_back(uv2);
             out_v.push_back(v3); out_n.push_back(normala); out_uv.push_back(uv3);
             out_v.push_back(v4); out_n.push_back(normala); out_uv.push_back(uv4);
         }
     }
     std::cout << "Plan plat generat! Varfuri: " << out_v.size() << "\n";
+}
+
+void createHeightmapTerrain(const char* path, float size, int subdiviziuni, float heightScale,
+    std::vector<glm::vec3>& out_v, std::vector<glm::vec3>& out_n, std::vector<glm::vec2>& out_uv) {
+
+    int width, height, nrChannels;
+    unsigned char* data = stbi_load(path, &width, &height, &nrChannels, 1);
+    if (!data) {
+        std::cout << "Eroare la incarcarea heightmap-ului: " << path << ". Folosesc teren plat.\n";
+        createFlatTerrain(size, subdiviziuni, out_v, out_n, out_uv);
+        return;
+    }
+
+    int gridSize = subdiviziuni + 1;
+    float pas = size / subdiviziuni;
+    float offset = size / 2.0f;
+    std::vector<float> heights(gridSize * gridSize);
+
+    auto sampleHeight = [&](float u, float v) -> float {
+        float imgX = u * (width - 1);
+        float imgY = v * (height - 1);
+        int x0 = (int)imgX;
+        int y0 = (int)imgY;
+        int x1 = x0 + 1;
+        int y1 = y0 + 1;
+        if (x1 >= width) x1 = width - 1;
+        if (y1 >= height) y1 = height - 1;
+
+        float tx = imgX - x0;
+        float ty = imgY - y0;
+        float h00 = data[y0 * width + x0] / 255.0f;
+        float h10 = data[y0 * width + x1] / 255.0f;
+        float h01 = data[y1 * width + x0] / 255.0f;
+        float h11 = data[y1 * width + x1] / 255.0f;
+        float h0 = h00 * (1.0f - tx) + h10 * tx;
+        float h1 = h01 * (1.0f - tx) + h11 * tx;
+        float h = h0 * (1.0f - ty) + h1 * ty;
+
+        h = h * h * (3.0f - 2.0f * h);
+        return h * heightScale;
+    };
+
+    for (int z = 0; z < gridSize; ++z) {
+        for (int x = 0; x < gridSize; ++x) {
+            float u = (float)x / subdiviziuni;
+            float v = (float)z / subdiviziuni;
+            heights[z * gridSize + x] = sampleHeight(u, v);
+        }
+    }
+
+    stbi_image_free(data);
+
+    auto heightAt = [&](int x, int z) -> float {
+        if (x < 0) x = 0;
+        if (z < 0) z = 0;
+        if (x >= gridSize) x = gridSize - 1;
+        if (z >= gridSize) z = gridSize - 1;
+        return heights[z * gridSize + x];
+    };
+
+    auto pointAt = [&](int x, int z) -> glm::vec3 {
+        return glm::vec3(x * pas - offset, heightAt(x, z), z * pas - offset);
+    };
+
+    auto normalAt = [&](int x, int z) -> glm::vec3 {
+        float hL = heightAt(x - 1, z);
+        float hR = heightAt(x + 1, z);
+        float hD = heightAt(x, z - 1);
+        float hU = heightAt(x, z + 1);
+        return glm::normalize(glm::vec3(hL - hR, 2.0f * pas, hD - hU));
+    };
+
+    for (int z = 0; z < subdiviziuni; ++z) {
+        for (int x = 0; x < subdiviziuni; ++x) {
+            glm::vec3 v1 = pointAt(x, z);
+            glm::vec3 v2 = pointAt(x + 1, z);
+            glm::vec3 v3 = pointAt(x, z + 1);
+            glm::vec3 v4 = pointAt(x + 1, z + 1);
+
+            glm::vec3 n1 = normalAt(x, z);
+            glm::vec3 n2 = normalAt(x + 1, z);
+            glm::vec3 n3 = normalAt(x, z + 1);
+            glm::vec3 n4 = normalAt(x + 1, z + 1);
+
+            glm::vec2 uv1((float)x / subdiviziuni, (float)z / subdiviziuni);
+            glm::vec2 uv2((float)(x + 1) / subdiviziuni, (float)z / subdiviziuni);
+            glm::vec2 uv3((float)x / subdiviziuni, (float)(z + 1) / subdiviziuni);
+            glm::vec2 uv4((float)(x + 1) / subdiviziuni, (float)(z + 1) / subdiviziuni);
+
+            out_v.push_back(v1); out_n.push_back(n1); out_uv.push_back(uv1);
+            out_v.push_back(v3); out_n.push_back(n3); out_uv.push_back(uv3);
+            out_v.push_back(v2); out_n.push_back(n2); out_uv.push_back(uv2);
+            out_v.push_back(v2); out_n.push_back(n2); out_uv.push_back(uv2);
+            out_v.push_back(v3); out_n.push_back(n3); out_uv.push_back(uv3);
+            out_v.push_back(v4); out_n.push_back(n4); out_uv.push_back(uv4);
+        }
+    }
+
+    std::cout << "Teren heightmap generat! Varfuri: " << out_v.size()
+        << " | Heightmap: " << width << "x" << height << " | Subdiviziuni: " << subdiviziuni << "\n";
 }
 GLuint loadTexture(const char* path) {
     GLuint textureID;
@@ -131,10 +200,10 @@ void init() {
     glEnable(GL_DEPTH_TEST);
     glewInit();
 
-    createFlatTerrain(1024.0f, 100, vertices, normals, uvs);
+    createHeightmapTerrain("heightmap.png", 1024.0f, 128, 60.0f, vertices, normals, uvs);
 
     // Incarcam textura de noise
-    noiseTexture = loadTexture("noise.png"); //noise.png
+    noiseTexture = loadTexture("noise.jpeg"); //noise.png
 
     // Construim buffer-ul interclas�nd toate cele 3 atribute (pozitii, normale, uv-uri) 
     std::vector<float> vboData;
@@ -198,7 +267,7 @@ void display() {
 
     // 1. Plan plat verde (Iarba Volumetrica)
     glBindVertexArray(vaoObj);
-    glUniform3f(colorLoc, 0.3f, 0.7f, 0.3f);
+    glUniform3f(colorLoc, 0.22f, 0.48f, 0.16f);
     modelMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 0))
         * glm::rotate(axisRotAngle, glm::vec3(0, 1, 0));
     glUniformMatrix4fv(glGetUniformLocation(shader_programme, "modelViewProjectionMatrix"),
