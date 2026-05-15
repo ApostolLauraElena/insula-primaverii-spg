@@ -86,142 +86,53 @@ void createFlatTerrain(float size, int subdiviziuni,
     std::cout << "Plan plat generat! Varfuri: " << out_v.size() << "\n";
 }
 
-void createWaterPlane(const char* heightmapPath, float waterSize, float terrainSize, int subdiviziuni, float level,
+void createWaterPlane(float waterSize, float terrainSize, int subdiviziuni, float level,
     std::vector<glm::vec3>& out_v, std::vector<glm::vec3>& out_n, std::vector<glm::vec2>& out_uv) {
-
-    int width, height, nrChannels;
-    unsigned char* data = stbi_load(heightmapPath, &width, &height, &nrChannels, 1);
-    if (!data) {
-        std::cout << "Eroare la incarcarea mastii de apa: " << heightmapPath << "\n";
-        return;
-    }
 
     float pas = waterSize / subdiviziuni;
     float waterOffset = waterSize / 2.0f;
-    float terrainOffset = terrainSize / 2.0f;
+    float halfTerrain = terrainSize / 2.0f; // 1024 / 2 = 512
     glm::vec3 normala(0.0f, 1.0f, 0.0f);
 
-    std::vector<unsigned char> oceanMask(width * height, 0);
-    std::vector<int> stack;
-
-    auto tryPushOceanPixel = [&](int x, int y) {
-        if (x < 0 || y < 0 || x >= width || y >= height) {
-            return;
-        }
-        int index = y * width + x;
-        if (oceanMask[index] != 0) {
-            return;
-        }
-        if (data[index] / 255.0f > LAND_MASK_THRESHOLD) {
-            return;
-        }
-        oceanMask[index] = 1;
-        stack.push_back(index);
-        };
-
-    for (int x = 0; x < width; ++x) {
-        tryPushOceanPixel(x, 0);
-        tryPushOceanPixel(x, height - 1);
-    }
-    for (int y = 0; y < height; ++y) {
-        tryPushOceanPixel(0, y);
-        tryPushOceanPixel(width - 1, y);
-    }
-
-    while (!stack.empty()) {
-        int index = stack.back();
-        stack.pop_back();
-        int x = index % width;
-        int y = index / width;
-        tryPushOceanPixel(x + 1, y);
-        tryPushOceanPixel(x - 1, y);
-        tryPushOceanPixel(x, y + 1);
-        tryPushOceanPixel(x, y - 1);
-    }
-
-    auto sampleMask = [&](float worldX, float worldZ) -> float {
-        float u = (worldX + terrainOffset) / terrainSize;
-        float v = (worldZ + terrainOffset) / terrainSize;
-        if (u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f) {
-            return 0.0f;
-        }
-
-        int imgX = (int)(u * (width - 1));
-        int imgY = (int)(v * (height - 1));
-        if (imgX < 0) imgX = 0;
-        if (imgY < 0) imgY = 0;
-        if (imgX >= width) imgX = width - 1;
-        if (imgY >= height) imgY = height - 1;
-
-        return data[imgY * width + imgX] / 255.0f;
-        };
-
-    auto isOcean = [&](float worldX, float worldZ) -> bool {
-        float u = (worldX + terrainOffset) / terrainSize;
-        float v = (worldZ + terrainOffset) / terrainSize;
-        if (u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f) {
-            return true;
-        }
-
-        int imgX = (int)(u * (width - 1));
-        int imgY = (int)(v * (height - 1));
-        if (imgX < 0) imgX = 0;
-        if (imgY < 0) imgY = 0;
-        if (imgX >= width) imgX = width - 1;
-        if (imgY >= height) imgY = height - 1;
-
-        return oceanMask[imgY * width + imgX] != 0;
-        };
-
-    auto isNearLand = [&](float worldX, float worldZ) -> bool {
-        for (int dz = -1; dz <= 1; ++dz) {
-            for (int dx = -1; dx <= 1; ++dx) {
-                float sampleX = worldX + dx * WATER_COAST_PADDING;
-                float sampleZ = worldZ + dz * WATER_COAST_PADDING;
-                if (sampleMask(sampleX, sampleZ) > LAND_MASK_THRESHOLD) {
-                    return true;
-                }
-            }
-        }
-        return false;
-        };
-
-    int skippedCells = 0;
     for (int z = 0; z < subdiviziuni; ++z) {
         for (int x = 0; x < subdiviziuni; ++x) {
-            glm::vec3 v1(x * pas - waterOffset, level, z * pas - waterOffset);
-            glm::vec3 v2((x + 1) * pas - waterOffset, level, z * pas - waterOffset);
-            glm::vec3 v3(x * pas - waterOffset, level, (z + 1) * pas - waterOffset);
-            glm::vec3 v4((x + 1) * pas - waterOffset, level, (z + 1) * pas - waterOffset);
-            glm::vec3 center = (v1 + v2 + v3 + v4) * 0.25f;
+            // Calculăm limitele (stânga, dreapta, jos, sus) pentru celula curentă
+            float xMin = x * pas - waterOffset;
+            float xMax = (x + 1) * pas - waterOffset;
+            float zMin = z * pas - waterOffset;
+            float zMax = (z + 1) * pas - waterOffset;
 
-            if (!isOcean(center.x, center.z) ||
-                !isOcean(v1.x, v1.z) || !isOcean(v2.x, v2.z) ||
-                !isOcean(v3.x, v3.z) || !isOcean(v4.x, v4.z) ||
-                isNearLand(center.x, center.z) ||
-                isNearLand(v1.x, v1.z) || isNearLand(v2.x, v2.z) ||
-                isNearLand(v3.x, v3.z) || isNearLand(v4.x, v4.z)) {
-                skippedCells++;
-                continue;
+            // Omitere: dacă întreaga celulă se află în interiorul zonei de 1024x1024 a terenului
+            if (xMin >= -halfTerrain && xMax <= halfTerrain &&
+                zMin >= -halfTerrain && zMax <= halfTerrain) {
+                continue; // Trecem peste, lăsând o "gaură" rectangulară pentru insulă
             }
 
+            // Cele 4 vârfuri ale celulei de apă
+            glm::vec3 v1(xMin, level, zMin);
+            glm::vec3 v2(xMax, level, zMin);
+            glm::vec3 v3(xMin, level, zMax);
+            glm::vec3 v4(xMax, level, zMax);
+
+            // Coordonatele UV pentru maparea texturii de apă normală
             glm::vec2 uv1((float)x / subdiviziuni, (float)z / subdiviziuni);
             glm::vec2 uv2((float)(x + 1) / subdiviziuni, (float)z / subdiviziuni);
             glm::vec2 uv3((float)x / subdiviziuni, (float)(z + 1) / subdiviziuni);
             glm::vec2 uv4((float)(x + 1) / subdiviziuni, (float)(z + 1) / subdiviziuni);
 
+            // Triunghiul 1
             out_v.push_back(v1); out_n.push_back(normala); out_uv.push_back(uv1);
             out_v.push_back(v3); out_n.push_back(normala); out_uv.push_back(uv3);
             out_v.push_back(v2); out_n.push_back(normala); out_uv.push_back(uv2);
+
+            // Triunghiul 2
             out_v.push_back(v2); out_n.push_back(normala); out_uv.push_back(uv2);
             out_v.push_back(v3); out_n.push_back(normala); out_uv.push_back(uv3);
             out_v.push_back(v4); out_n.push_back(normala); out_uv.push_back(uv4);
         }
     }
 
-    stbi_image_free(data);
-    std::cout << "Plan apa mascat generat! Varfuri: " << out_v.size()
-        << " | Celule sarite peste uscat: " << skippedCells << "\n";
+    std::cout << "Inelul de apa geometric a fost generat! Varfuri: " << out_v.size() << "\n";
 }
 
 void createHeightmapTerrain(const char* path, float size, int subdiviziuni, float heightScale,
@@ -309,15 +220,7 @@ void createHeightmapTerrain(const char* path, float size, int subdiviziuni, floa
 
     for (int z = 0; z < subdiviziuni; ++z) {
         for (int x = 0; x < subdiviziuni; ++x) {
-            bool landCell =
-                maskAt(x, z) > LAND_MASK_THRESHOLD ||
-                maskAt(x + 1, z) > LAND_MASK_THRESHOLD ||
-                maskAt(x, z + 1) > LAND_MASK_THRESHOLD ||
-                maskAt(x + 1, z + 1) > LAND_MASK_THRESHOLD;
-            if (!landCell) {
-                continue;
-            }
-
+          
             glm::vec3 v1 = pointAt(x, z);
             glm::vec3 v2 = pointAt(x + 1, z);
             glm::vec3 v3 = pointAt(x, z + 1);
@@ -351,19 +254,27 @@ GLuint loadTexture(const char* path) {
     glBindTexture(GL_TEXTURE_2D, textureID);
 
     int width, height, nrChannels;
-    unsigned char* data = stbi_load(path, &width, &height, &nrChannels, 0);
+
+    // MODIFICARE: Schimbăm ultimul parametru din 0 în 4 (STBI_rgb_alpha)
+    // Acest lucru forțează stbi_load să returneze ÎNTOTDEAUNA un buffer RGBA (4 octeți/pixel)
+    unsigned char* data = stbi_load(path, &width, &height, &nrChannels, 4);
+
     if (data) {
-        GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
+        // Deoarece am forțat încărcarea în 4 canale, formatul va fi mereu GL_RGBA
+        GLenum format = GL_RGBA;
+
         glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
+
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }
     else {
-        std::cout << "Eroare la incarcarea texturii de iarba: " << path << std::endl;
+        std::cout << "Eroare la incarcarea texturii: " << path << std::endl;
     }
+
     stbi_image_free(data);
     return textureID;
 }
@@ -372,8 +283,8 @@ void init() {
     glewInit();
 
     createHeightmapTerrain("heightmap.png", 1024.0f, 128, 60.0f, vertices, normals, uvs);
-    createWaterPlane("heightmap.png", 1400.0f, 1024.0f, 128, waterLevel, waterVertices, waterNormals, waterUvs);
-
+    // În loc de vechiul apel, folosește-l pe acesta:
+    createWaterPlane(1400.0f, 1024.0f, 128, waterLevel, waterVertices, waterNormals, waterUvs);
     // Incarcam textura de noise
     noiseTexture = loadTexture("noise.jpeg"); //noise.png
     waterNormalTexture = loadTexture("Water.jpg");

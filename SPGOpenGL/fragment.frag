@@ -6,24 +6,18 @@ in vec3 pos;
 in vec3 localPos;
 in vec2 texCoord;
 
-in vec3 localPosUndisplaced;
-
 uniform vec3 lightPos;
 uniform vec3 viewPos;
 uniform vec3 objectColor;
 
-// Uniforms pentru iarba
 uniform int isGrass;
 uniform int isWater;
 uniform float shellHeight;
 uniform float time;
 uniform float waterLevel;
 uniform float terrainSize;
-uniform float landMaskThreshold;
-uniform float waterCoastPadding;
-uniform sampler2D noiseTexture;
-uniform sampler2D waterNormalTexture;
-uniform sampler2D heightmapMaskTexture;
+uniform sampler2D noiseTexture;       // Pentru iarba - TREBUIE SA RAMANA
+uniform sampler2D waterNormalTexture; // Pentru apa
 
 vec3 lighting(vec3 objColor, vec3 p, vec3 n, vec3 lPos, vec3 vPos,
               vec3 ambient, vec3 lightColor, vec3 specular, float specPower)
@@ -40,11 +34,8 @@ vec3 lighting(vec3 objColor, vec3 p, vec3 n, vec3 lPos, vec3 vPos,
 
 void main()
 {
+    // 1. Logica pentru Apa (fara discard, curata, exact cum ai vrut)
     if (isWater == 1) {
-        // FIX 1: Eliminat waterOverLand() - CPU-ul deja a exclus celulele de pe uscat.
-        // Verificarea dubla GPU crea un pattern "checkerboard" la margini, discardand
-        // fragmente aleatoriu pe baza esantionarii neuniforme a mastii.
-
         vec2 uvA = texCoord * 22.0 + vec2(time * 0.035, time * 0.018);
         vec2 uvB = texCoord * 41.0 + vec2(-time * 0.020, time * 0.045);
 
@@ -62,22 +53,18 @@ void main()
         float fresnel = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 5.0);
         float crest = smoothstep(waterLevel - 0.4, waterLevel + 1.4, pos.y);
 
-        vec3 deepColor   = vec3(0.02, 0.18, 0.28);
-        vec3 shallowColor = vec3(0.08, 0.42, 0.52);
+        vec3 deepColor = vec3(0.02, 0.16, 0.22);
+        vec3 shallowColor = vec3(0.06, 0.36, 0.42);
         vec3 waterColor = mix(deepColor, shallowColor, crest);
         waterColor *= 0.55 + diff * 0.55;
         waterColor += vec3(1.0, 0.96, 0.82) * spec * 1.15;
         waterColor += vec3(0.45, 0.75, 0.95) * fresnel * 0.55;
 
-        // FIX 2: Alpha mult mai mare (0.88-0.97 in loc de 0.58-0.82).
-        // Apa semi-transparenta (0.58) se amesteca cu culoarea cerului (0.5, 0.8, 0.9)
-        // si iese un albastru-deschis spalacit. Cu alpha 0.88+ apa isi pastreaza culoarea inchisa.
-        float alpha = mix(0.88, 0.97, fresnel);
-
-        fragColor = vec4(clamp(waterColor, 0.0, 1.0), alpha);
+        fragColor = vec4(clamp(waterColor, 0.0, 1.0), mix(0.58, 0.82, fresnel));
         return;
     }
 
+    // 2. Logica pentru Iarba (AICI TREBUIE DISCARD-UL INAPOI!)
     if (isGrass == 1 && shellHeight > 0.0) {
         vec2 uv1 = texCoord * 17.0;
         vec2 uv2 = texCoord * 43.0 + vec2(0.37, 0.71);
@@ -86,11 +73,13 @@ void main()
         float n2 = texture(noiseTexture, uv2).r;
         float noiseVal = mix(n1, n2, 0.35);
 
+        // Daca valoarea de noise e mai mica decat inaltimea stratului curent, „gaurim” stratul
         if (noiseVal < pow(shellHeight, 1.2)) {
-            discard;
+            discard; 
         }
     }
 
+    // Iluminare si colorare teren/iarba
     vec3 ambient = vec3(0.3);
     vec3 specular = (isGrass == 1) ? vec3(0.0) : vec3(0.1); 
     
@@ -103,16 +92,12 @@ void main()
         finalColor = mix(rootColor, tipColor, colorCurve) * mix(0.82, 1.08, colorVariation);
     }
 
-    vec3 color1 = lighting(finalColor, pos, normal, lightPos, viewPos,
-                           ambient, vec3(1.0, 0.95, 0.9), specular, 16.0);
-    vec3 color2 = lighting(finalColor, pos, normal, viewPos, viewPos,
-                           vec3(0.0), vec3(0.2), specular, 4.0);
-
+    vec3 color1 = lighting(finalColor, pos, normal, lightPos, viewPos, ambient, vec3(1.0, 0.95, 0.9), specular, 16.0);
+    vec3 color2 = lighting(finalColor, pos, normal, viewPos, viewPos, vec3(0.0), vec3(0.2), specular, 4.0);
     vec3 litColor = clamp(color1 + color2, 0.0, 1.0);
 
     float dist = distance(viewPos, pos);
     float fog = smoothstep(450.0, 1200.0, dist);
-
     vec3 skyColor = vec3(0.5, 0.8, 0.9);
     vec3 finalFogColor = mix(litColor, skyColor, fog * 0.45);
 
