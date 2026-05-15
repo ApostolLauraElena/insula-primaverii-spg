@@ -15,7 +15,11 @@
 #include "stb_image.h"
 
 GLuint noiseTexture;
+GLuint waterNormalTexture;
+GLuint heightmapMaskTexture;
 #define PI glm::pi<float>()
+const float LAND_MASK_THRESHOLD = 0.08f;
+const float WATER_COAST_PADDING = 64.0f;
 
 // --- Global variables ---
 GLuint shader_programme;
@@ -26,6 +30,13 @@ GLuint vaoObj, vboObj;
 std::vector<glm::vec3> vertices;
 std::vector<glm::vec3> normals;
 std::vector<glm::vec2> uvs;
+
+// Water geometry
+GLuint vaoWater, vboWater;
+std::vector<glm::vec3> waterVertices;
+std::vector<glm::vec3> waterNormals;
+std::vector<glm::vec2> waterUvs;
+float waterLevel = 0.5f;
 
 // Cube (trees)
 GLuint vaoCub, vboCub;
@@ -75,6 +86,144 @@ void createFlatTerrain(float size, int subdiviziuni,
     std::cout << "Plan plat generat! Varfuri: " << out_v.size() << "\n";
 }
 
+void createWaterPlane(const char* heightmapPath, float waterSize, float terrainSize, int subdiviziuni, float level,
+    std::vector<glm::vec3>& out_v, std::vector<glm::vec3>& out_n, std::vector<glm::vec2>& out_uv) {
+
+    int width, height, nrChannels;
+    unsigned char* data = stbi_load(heightmapPath, &width, &height, &nrChannels, 1);
+    if (!data) {
+        std::cout << "Eroare la incarcarea mastii de apa: " << heightmapPath << "\n";
+        return;
+    }
+
+    float pas = waterSize / subdiviziuni;
+    float waterOffset = waterSize / 2.0f;
+    float terrainOffset = terrainSize / 2.0f;
+    glm::vec3 normala(0.0f, 1.0f, 0.0f);
+
+    std::vector<unsigned char> oceanMask(width * height, 0);
+    std::vector<int> stack;
+
+    auto tryPushOceanPixel = [&](int x, int y) {
+        if (x < 0 || y < 0 || x >= width || y >= height) {
+            return;
+        }
+        int index = y * width + x;
+        if (oceanMask[index] != 0) {
+            return;
+        }
+        if (data[index] / 255.0f > LAND_MASK_THRESHOLD) {
+            return;
+        }
+        oceanMask[index] = 1;
+        stack.push_back(index);
+        };
+
+    for (int x = 0; x < width; ++x) {
+        tryPushOceanPixel(x, 0);
+        tryPushOceanPixel(x, height - 1);
+    }
+    for (int y = 0; y < height; ++y) {
+        tryPushOceanPixel(0, y);
+        tryPushOceanPixel(width - 1, y);
+    }
+
+    while (!stack.empty()) {
+        int index = stack.back();
+        stack.pop_back();
+        int x = index % width;
+        int y = index / width;
+        tryPushOceanPixel(x + 1, y);
+        tryPushOceanPixel(x - 1, y);
+        tryPushOceanPixel(x, y + 1);
+        tryPushOceanPixel(x, y - 1);
+    }
+
+    auto sampleMask = [&](float worldX, float worldZ) -> float {
+        float u = (worldX + terrainOffset) / terrainSize;
+        float v = (worldZ + terrainOffset) / terrainSize;
+        if (u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f) {
+            return 0.0f;
+        }
+
+        int imgX = (int)(u * (width - 1));
+        int imgY = (int)(v * (height - 1));
+        if (imgX < 0) imgX = 0;
+        if (imgY < 0) imgY = 0;
+        if (imgX >= width) imgX = width - 1;
+        if (imgY >= height) imgY = height - 1;
+
+        return data[imgY * width + imgX] / 255.0f;
+        };
+
+    auto isOcean = [&](float worldX, float worldZ) -> bool {
+        float u = (worldX + terrainOffset) / terrainSize;
+        float v = (worldZ + terrainOffset) / terrainSize;
+        if (u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f) {
+            return true;
+        }
+
+        int imgX = (int)(u * (width - 1));
+        int imgY = (int)(v * (height - 1));
+        if (imgX < 0) imgX = 0;
+        if (imgY < 0) imgY = 0;
+        if (imgX >= width) imgX = width - 1;
+        if (imgY >= height) imgY = height - 1;
+
+        return oceanMask[imgY * width + imgX] != 0;
+        };
+
+    auto isNearLand = [&](float worldX, float worldZ) -> bool {
+        for (int dz = -1; dz <= 1; ++dz) {
+            for (int dx = -1; dx <= 1; ++dx) {
+                float sampleX = worldX + dx * WATER_COAST_PADDING;
+                float sampleZ = worldZ + dz * WATER_COAST_PADDING;
+                if (sampleMask(sampleX, sampleZ) > LAND_MASK_THRESHOLD) {
+                    return true;
+                }
+            }
+        }
+        return false;
+        };
+
+    int skippedCells = 0;
+    for (int z = 0; z < subdiviziuni; ++z) {
+        for (int x = 0; x < subdiviziuni; ++x) {
+            glm::vec3 v1(x * pas - waterOffset, level, z * pas - waterOffset);
+            glm::vec3 v2((x + 1) * pas - waterOffset, level, z * pas - waterOffset);
+            glm::vec3 v3(x * pas - waterOffset, level, (z + 1) * pas - waterOffset);
+            glm::vec3 v4((x + 1) * pas - waterOffset, level, (z + 1) * pas - waterOffset);
+            glm::vec3 center = (v1 + v2 + v3 + v4) * 0.25f;
+
+            if (!isOcean(center.x, center.z) ||
+                !isOcean(v1.x, v1.z) || !isOcean(v2.x, v2.z) ||
+                !isOcean(v3.x, v3.z) || !isOcean(v4.x, v4.z) ||
+                isNearLand(center.x, center.z) ||
+                isNearLand(v1.x, v1.z) || isNearLand(v2.x, v2.z) ||
+                isNearLand(v3.x, v3.z) || isNearLand(v4.x, v4.z)) {
+                skippedCells++;
+                continue;
+            }
+
+            glm::vec2 uv1((float)x / subdiviziuni, (float)z / subdiviziuni);
+            glm::vec2 uv2((float)(x + 1) / subdiviziuni, (float)z / subdiviziuni);
+            glm::vec2 uv3((float)x / subdiviziuni, (float)(z + 1) / subdiviziuni);
+            glm::vec2 uv4((float)(x + 1) / subdiviziuni, (float)(z + 1) / subdiviziuni);
+
+            out_v.push_back(v1); out_n.push_back(normala); out_uv.push_back(uv1);
+            out_v.push_back(v3); out_n.push_back(normala); out_uv.push_back(uv3);
+            out_v.push_back(v2); out_n.push_back(normala); out_uv.push_back(uv2);
+            out_v.push_back(v2); out_n.push_back(normala); out_uv.push_back(uv2);
+            out_v.push_back(v3); out_n.push_back(normala); out_uv.push_back(uv3);
+            out_v.push_back(v4); out_n.push_back(normala); out_uv.push_back(uv4);
+        }
+    }
+
+    stbi_image_free(data);
+    std::cout << "Plan apa mascat generat! Varfuri: " << out_v.size()
+        << " | Celule sarite peste uscat: " << skippedCells << "\n";
+}
+
 void createHeightmapTerrain(const char* path, float size, int subdiviziuni, float heightScale,
     std::vector<glm::vec3>& out_v, std::vector<glm::vec3>& out_n, std::vector<glm::vec2>& out_uv) {
 
@@ -90,8 +239,9 @@ void createHeightmapTerrain(const char* path, float size, int subdiviziuni, floa
     float pas = size / subdiviziuni;
     float offset = size / 2.0f;
     std::vector<float> heights(gridSize * gridSize);
+    std::vector<float> landMask(gridSize * gridSize);
 
-    auto sampleHeight = [&](float u, float v) -> float {
+    auto sampleRawHeight = [&](float u, float v) -> float {
         float imgX = u * (width - 1);
         float imgY = v * (height - 1);
         int x0 = (int)imgX;
@@ -109,17 +259,21 @@ void createHeightmapTerrain(const char* path, float size, int subdiviziuni, floa
         float h11 = data[y1 * width + x1] / 255.0f;
         float h0 = h00 * (1.0f - tx) + h10 * tx;
         float h1 = h01 * (1.0f - tx) + h11 * tx;
-        float h = h0 * (1.0f - ty) + h1 * ty;
+        return h0 * (1.0f - ty) + h1 * ty;
+        };
 
+    auto sampleHeight = [&](float u, float v) -> float {
+        float h = sampleRawHeight(u, v);
         h = h * h * (3.0f - 2.0f * h);
         return h * heightScale;
-    };
+        };
 
     for (int z = 0; z < gridSize; ++z) {
         for (int x = 0; x < gridSize; ++x) {
             float u = (float)x / subdiviziuni;
             float v = (float)z / subdiviziuni;
             heights[z * gridSize + x] = sampleHeight(u, v);
+            landMask[z * gridSize + x] = sampleRawHeight(u, v);
         }
     }
 
@@ -131,11 +285,19 @@ void createHeightmapTerrain(const char* path, float size, int subdiviziuni, floa
         if (x >= gridSize) x = gridSize - 1;
         if (z >= gridSize) z = gridSize - 1;
         return heights[z * gridSize + x];
-    };
+        };
+
+    auto maskAt = [&](int x, int z) -> float {
+        if (x < 0) x = 0;
+        if (z < 0) z = 0;
+        if (x >= gridSize) x = gridSize - 1;
+        if (z >= gridSize) z = gridSize - 1;
+        return landMask[z * gridSize + x];
+        };
 
     auto pointAt = [&](int x, int z) -> glm::vec3 {
         return glm::vec3(x * pas - offset, heightAt(x, z), z * pas - offset);
-    };
+        };
 
     auto normalAt = [&](int x, int z) -> glm::vec3 {
         float hL = heightAt(x - 1, z);
@@ -143,10 +305,19 @@ void createHeightmapTerrain(const char* path, float size, int subdiviziuni, floa
         float hD = heightAt(x, z - 1);
         float hU = heightAt(x, z + 1);
         return glm::normalize(glm::vec3(hL - hR, 2.0f * pas, hD - hU));
-    };
+        };
 
     for (int z = 0; z < subdiviziuni; ++z) {
         for (int x = 0; x < subdiviziuni; ++x) {
+            bool landCell =
+                maskAt(x, z) > LAND_MASK_THRESHOLD ||
+                maskAt(x + 1, z) > LAND_MASK_THRESHOLD ||
+                maskAt(x, z + 1) > LAND_MASK_THRESHOLD ||
+                maskAt(x + 1, z + 1) > LAND_MASK_THRESHOLD;
+            if (!landCell) {
+                continue;
+            }
+
             glm::vec3 v1 = pointAt(x, z);
             glm::vec3 v2 = pointAt(x + 1, z);
             glm::vec3 v3 = pointAt(x, z + 1);
@@ -201,9 +372,17 @@ void init() {
     glewInit();
 
     createHeightmapTerrain("heightmap.png", 1024.0f, 128, 60.0f, vertices, normals, uvs);
+    createWaterPlane("heightmap.png", 1400.0f, 1024.0f, 128, waterLevel, waterVertices, waterNormals, waterUvs);
 
     // Incarcam textura de noise
     noiseTexture = loadTexture("noise.jpeg"); //noise.png
+    waterNormalTexture = loadTexture("Water.jpg");
+    heightmapMaskTexture = loadTexture("heightmap.png");
+    glBindTexture(GL_TEXTURE_2D, heightmapMaskTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     // Construim buffer-ul interclas�nd toate cele 3 atribute (pozitii, normale, uv-uri) 
     std::vector<float> vboData;
@@ -224,6 +403,21 @@ void init() {
     // Attribute 2: UV-uri
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)((vertices.size() + normals.size()) * 3 * sizeof(float)));
+
+    std::vector<float> waterVboData;
+    for (size_t i = 0; i < waterVertices.size(); i++) { waterVboData.push_back(waterVertices[i].x); waterVboData.push_back(waterVertices[i].y); waterVboData.push_back(waterVertices[i].z); }
+    for (size_t i = 0; i < waterNormals.size(); i++) { waterVboData.push_back(waterNormals[i].x); waterVboData.push_back(waterNormals[i].y); waterVboData.push_back(waterNormals[i].z); }
+    for (size_t i = 0; i < waterUvs.size(); i++) { waterVboData.push_back(waterUvs[i].x); waterVboData.push_back(waterUvs[i].y); }
+
+    glGenVertexArrays(1, &vaoWater); glGenBuffers(1, &vboWater);
+    glBindVertexArray(vaoWater); glBindBuffer(GL_ARRAY_BUFFER, vboWater);
+    glBufferData(GL_ARRAY_BUFFER, waterVboData.size() * sizeof(float), waterVboData.data(), GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)(waterVertices.size() * 3 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)((waterVertices.size() + waterNormals.size()) * 3 * sizeof(float)));
 
     std::string vstext = textFileRead("vertex.vert");
     std::string fstext = textFileRead("fragment.frag");
@@ -257,6 +451,7 @@ void display() {
     glUniform3fv(glGetUniformLocation(shader_programme, "lightPos"), 1, glm::value_ptr(lightPos));
     glUniform3fv(glGetUniformLocation(shader_programme, "viewPos"), 1, glm::value_ptr(cameraPos));
     glUniform1f(glGetUniformLocation(shader_programme, "time"), glutGet(GLUT_ELAPSED_TIME) / 1000.0f);
+    glUniform1f(glGetUniformLocation(shader_programme, "waterLevel"), waterLevel);
 
     GLuint colorLoc = glGetUniformLocation(shader_programme, "objectColor");
 
@@ -278,6 +473,7 @@ void display() {
         1, GL_FALSE, glm::value_ptr(glm::transpose(glm::inverse(modelMatrix))));
 
     // Setari pt iarba
+    glUniform1i(glGetUniformLocation(shader_programme, "isWater"), 0);
     glUniform1i(glGetUniformLocation(shader_programme, "isGrass"), 1);
     glDisable(GL_CULL_FACE);
 
@@ -292,7 +488,38 @@ void display() {
     glUniform1i(glGetUniformLocation(shader_programme, "isGrass"), 0);
     glUniform1f(glGetUniformLocation(shader_programme, "shellHeight"), 0.0f);
 
-    // 2. Padure
+    // 2. Apa
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
+    glUniform1i(glGetUniformLocation(shader_programme, "waterNormalTexture"), 1);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, heightmapMaskTexture);
+    glUniform1i(glGetUniformLocation(shader_programme, "heightmapMaskTexture"), 2);
+    glUniform1f(glGetUniformLocation(shader_programme, "terrainSize"), 1024.0f);
+    glUniform1f(glGetUniformLocation(shader_programme, "landMaskThreshold"), LAND_MASK_THRESHOLD);
+    glUniform1f(glGetUniformLocation(shader_programme, "waterCoastPadding"), WATER_COAST_PADDING);
+    glUniform1i(glGetUniformLocation(shader_programme, "isWater"), 1);
+
+    glBindVertexArray(vaoWater);
+    modelMatrix = glm::rotate(glm::mat4(1.0f), axisRotAngle, glm::vec3(0, 1, 0));
+    glUniformMatrix4fv(glGetUniformLocation(shader_programme, "modelViewProjectionMatrix"),
+        1, GL_FALSE, glm::value_ptr(projectionMatrix * viewMatrix * modelMatrix));
+    glUniformMatrix4fv(glGetUniformLocation(shader_programme, "modelMatrix"),
+        1, GL_FALSE, glm::value_ptr(modelMatrix));
+    glUniformMatrix4fv(glGetUniformLocation(shader_programme, "normalMatrix"),
+        1, GL_FALSE, glm::value_ptr(glm::transpose(glm::inverse(modelMatrix))));
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+    glDisable(GL_CULL_FACE);
+    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)waterVertices.size());
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+    glEnable(GL_CULL_FACE);
+    glUniform1i(glGetUniformLocation(shader_programme, "isWater"), 0);
+
+    // 3. Padure
 
     glutSwapBuffers();
 }

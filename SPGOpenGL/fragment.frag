@@ -3,7 +3,10 @@ out vec4 fragColor;
 
 in vec3 normal;
 in vec3 pos;
+in vec3 localPos;
 in vec2 texCoord;
+
+in vec3 localPosUndisplaced;
 
 uniform vec3 lightPos;
 uniform vec3 viewPos;
@@ -11,8 +14,16 @@ uniform vec3 objectColor;
 
 // Uniforms pentru iarba
 uniform int isGrass;
+uniform int isWater;
 uniform float shellHeight;
+uniform float time;
+uniform float waterLevel;
+uniform float terrainSize;
+uniform float landMaskThreshold;
+uniform float waterCoastPadding;
 uniform sampler2D noiseTexture;
+uniform sampler2D waterNormalTexture;
+uniform sampler2D heightmapMaskTexture;
 
 vec3 lighting(vec3 objColor, vec3 p, vec3 n, vec3 lPos, vec3 vPos,
               vec3 ambient, vec3 lightColor, vec3 specular, float specPower)
@@ -29,13 +40,51 @@ vec3 lighting(vec3 objColor, vec3 p, vec3 n, vec3 lPos, vec3 vPos,
 
 void main()
 {
+    if (isWater == 1) {
+        // FIX 1: Eliminat waterOverLand() - CPU-ul deja a exclus celulele de pe uscat.
+        // Verificarea dubla GPU crea un pattern "checkerboard" la margini, discardand
+        // fragmente aleatoriu pe baza esantionarii neuniforme a mastii.
+
+        vec2 uvA = texCoord * 22.0 + vec2(time * 0.035, time * 0.018);
+        vec2 uvB = texCoord * 41.0 + vec2(-time * 0.020, time * 0.045);
+
+        vec3 nA = texture(waterNormalTexture, uvA).rgb * 2.0 - 1.0;
+        vec3 nB = texture(waterNormalTexture, uvB).rgb * 2.0 - 1.0;
+        vec3 detailNormal = normalize(vec3(nA.x + nB.x * 0.55, nA.y + nB.y * 0.55, nA.z + nB.z));
+        vec3 detailWorld = normalize(vec3(detailNormal.x * 0.42, detailNormal.z, detailNormal.y * 0.42));
+        vec3 N = normalize(normal * 0.75 + detailWorld * 0.55);
+
+        vec3 L = normalize(lightPos - pos);
+        vec3 V = normalize(viewPos - pos);
+        vec3 H = normalize(L + V);
+        float diff = max(dot(N, L), 0.0);
+        float spec = pow(max(dot(N, H), 0.0), 96.0);
+        float fresnel = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 5.0);
+        float crest = smoothstep(waterLevel - 0.4, waterLevel + 1.4, pos.y);
+
+        vec3 deepColor   = vec3(0.02, 0.18, 0.28);
+        vec3 shallowColor = vec3(0.08, 0.42, 0.52);
+        vec3 waterColor = mix(deepColor, shallowColor, crest);
+        waterColor *= 0.55 + diff * 0.55;
+        waterColor += vec3(1.0, 0.96, 0.82) * spec * 1.15;
+        waterColor += vec3(0.45, 0.75, 0.95) * fresnel * 0.55;
+
+        // FIX 2: Alpha mult mai mare (0.88-0.97 in loc de 0.58-0.82).
+        // Apa semi-transparenta (0.58) se amesteca cu culoarea cerului (0.5, 0.8, 0.9)
+        // si iese un albastru-deschis spalacit. Cu alpha 0.88+ apa isi pastreaza culoarea inchisa.
+        float alpha = mix(0.88, 0.97, fresnel);
+
+        fragColor = vec4(clamp(waterColor, 0.0, 1.0), alpha);
+        return;
+    }
+
     if (isGrass == 1 && shellHeight > 0.0) {
         vec2 uv1 = texCoord * 17.0;
-vec2 uv2 = texCoord * 43.0 + vec2(0.37, 0.71);
+        vec2 uv2 = texCoord * 43.0 + vec2(0.37, 0.71);
 
-float n1 = texture(noiseTexture, uv1).r;
-float n2 = texture(noiseTexture, uv2).r;
-float noiseVal = mix(n1, n2, 0.35);
+        float n1 = texture(noiseTexture, uv1).r;
+        float n2 = texture(noiseTexture, uv2).r;
+        float noiseVal = mix(n1, n2, 0.35);
 
         if (noiseVal < pow(shellHeight, 1.2)) {
             discard;
@@ -43,7 +92,7 @@ float noiseVal = mix(n1, n2, 0.35);
     }
 
     vec3 ambient = vec3(0.3);
-     vec3 specular = (isGrass == 1) ? vec3(0.0) : vec3(0.1); 
+    vec3 specular = (isGrass == 1) ? vec3(0.0) : vec3(0.1); 
     
     vec3 finalColor = objectColor;
     if (isGrass == 1) {
@@ -58,7 +107,6 @@ float noiseVal = mix(n1, n2, 0.35);
                            ambient, vec3(1.0, 0.95, 0.9), specular, 16.0);
     vec3 color2 = lighting(finalColor, pos, normal, viewPos, viewPos,
                            vec3(0.0), vec3(0.2), specular, 4.0);
-    fragColor = vec4(clamp(color1 + color2, 0.0, 1.0), 1.0);
 
     vec3 litColor = clamp(color1 + color2, 0.0, 1.0);
 
@@ -69,5 +117,4 @@ float noiseVal = mix(n1, n2, 0.35);
     vec3 finalFogColor = mix(litColor, skyColor, fog * 0.45);
 
     fragColor = vec4(finalFogColor, 1.0);
-
 }
