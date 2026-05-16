@@ -51,7 +51,7 @@ void main()
         vec3 tangent = vec3(1.0, 0.0, 0.0);
         vec3 binormal = vec3(0.0, 0.0, 1.0);
 
-        p += gerstnerWave(vec2(1.0, 0.35), 1.6, 120.0, 0.90, 0.62, origP, tangent, binormal);
+        p += gerstnerWave(vec2(0.0, 1.35), 1.6, 120.0, 0.90, 0.62, origP, tangent, binormal);
         p += gerstnerWave(vec2(0.35, 1.0), 0.9, 54.0, 1.55, 0.48, origP, tangent, binormal);
         p += gerstnerWave(vec2(-0.8, 0.6), 0.55, 28.0, 2.10, 0.34, origP, tangent, binormal);
         p += gerstnerWave(vec2(0.65, -0.75), 0.35, 18.0, 2.75, 0.24, origP, tangent, binormal);

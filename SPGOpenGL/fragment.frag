@@ -36,8 +36,8 @@ void main()
 {
     // 1. Logica pentru Apa 
     if (isWater == 1) {
-        vec2 uvA = texCoord * 22.0 + vec2(time * 0.035, time * 0.018);
-        vec2 uvB = texCoord * 41.0 + vec2(-time * 0.020, time * 0.045);
+        vec2 uvA = texCoord * 22.0 + vec2(time * 0.035, -time * 0.018);
+        vec2 uvB = texCoord * 41.0 + vec2(time * 0.020, time * 0.045);
 
         vec3 nA = texture(waterNormalTexture, uvA).rgb * 2.0 - 1.0;
         vec3 nB = texture(waterNormalTexture, uvB).rgb * 2.0 - 1.0;

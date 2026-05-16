@@ -43,7 +43,7 @@ float waterLevel = 0.5f;
 GLuint vaoCub, vboCub;
 
 // Camera
-glm::vec3 cameraPos = glm::vec3(0.0f, 150.0f, 300.0f);
+glm::vec3 cameraPos = glm::vec3(0.0f, 80.0f, 600.0f);
 glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
 glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 float yaw = -90.0f;
@@ -74,7 +74,7 @@ GLuint ciresShaderProgram;
 GLuint texTrunchi;
 GLuint texFrunze;
 
-int numTreeInstances = 40; // Numarul de copaci dorit pe insula
+int numTreeInstances = 30; // Numarul de copaci dorit pe insula
 void createFlatTerrain(float size, int subdiviziuni,
     std::vector<glm::vec3>& out_v, std::vector<glm::vec3>& out_n, std::vector<glm::vec2>& out_uv) {
 
@@ -395,17 +395,15 @@ void init() {
     std::vector<glm::vec3> pozitiiOcupate;
     int incercari = 0;
     const int MAX_INCERCARI = 50000;
-    float distantaMinima = 200.0f;
+    float distantaMinima = 120.0f;
 
     while (copaciGenerati < numTreeInstances && incercari < MAX_INCERCARI) {
         incercari++;
 
-        int randomIndex = rand() % vertices.size();
+        int randomIndex = ((rand() << 15) | rand()) % vertices.size();
         glm::vec3 punctPeTeren = vertices[randomIndex];
 
-        if (punctPeTeren.y > waterLevel + 5.0f) {
-
-            if (punctPeTeren.y > waterLevel + 5.0f) {
+           // if (punctPeTeren.y > waterLevel ) {
 
                 bool pozitieBuna = true;
                 for (const glm::vec3& poz : pozitiiOcupate) {
@@ -429,12 +427,11 @@ void init() {
                     pozitiiOcupate.push_back(punctPeTeren); 
                     copaciGenerati++;
                 }
-            }
-        }
+       //     }
     }
 
     std::cout << "S-au generat " << copaciGenerati << " copaci din " << numTreeInstances << " doriti (Distanta: " << distantaMinima << ").\n";
-
+    numTreeInstances = copaciGenerati;
     // Trimitem matricile pe GPU (un singur buffer pentru ambele VAO-uri)
     glGenBuffers(1, &vboInstanceMatrices);
     glBindBuffer(GL_ARRAY_BUFFER, vboInstanceMatrices);
@@ -667,7 +664,7 @@ void mouseCallback(int xpos, int ypos) {
 }
 
 void keyboard(unsigned char key, int x, int y) {
-    float speed = 10.0f;
+    float speed = 8.0f;
     switch (key) {
     case 'w': case 'W': cameraPos += speed * cameraFront; break;
     case 's': case 'S': cameraPos -= speed * cameraFront; break;
@@ -679,12 +676,11 @@ void keyboard(unsigned char key, int x, int y) {
     case 'f': case 'F': axisRotAngle -= 0.05f; break;
     }
 
-    if (cameraPos.y < 5.0f) cameraPos.y = 5.0f;
+    if (cameraPos.y < 50.0f) cameraPos.y = 50.0f;
 
     const float LIMITA_APA = 2300.0f; 
     cameraPos.x = glm::clamp(cameraPos.x, -LIMITA_APA, LIMITA_APA);
     cameraPos.z = glm::clamp(cameraPos.z, -LIMITA_APA, LIMITA_APA);
-
     viewMatrix = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
     glutPostRedisplay();
 }
@@ -692,8 +688,8 @@ void keyboard(unsigned char key, int x, int y) {
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
-    glutInitWindowPosition(200, 200);
-    glutInitWindowSize(900, 700);
+    glutInitWindowPosition(100, 50);
+    glutInitWindowSize(1280, 720);
     glutCreateWindow("SPG");
     init();
     glutIdleFunc(display);
