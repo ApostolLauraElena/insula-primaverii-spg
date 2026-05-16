@@ -656,7 +656,7 @@ void reshape(int w, int h) {
 
 void mouseCallback(int xpos, int ypos) {
     if (firstMouse) { lastX = static_cast<float>(xpos); lastY = static_cast<float>(ypos); firstMouse = false; }
-    float xoffset = (xpos - lastX) * 0.2f, yoffset = (lastY - ypos) * 0.2f;
+    float xoffset = (xpos - lastX) * 0.1f, yoffset = (lastY - ypos) * 0.1f;
     lastX = static_cast<float>(xpos); lastY = static_cast<float>(ypos);
     yaw += xoffset; pitch += yoffset;
     if (pitch > 89) pitch = 89; if (pitch < -89) pitch = -89;
@@ -670,7 +670,7 @@ void mouseCallback(int xpos, int ypos) {
 }
 
 void keyboard(unsigned char key, int x, int y) {
-    float speed = 8.0f;
+    float speed = 15.0f;
     switch (key) {
     case 'w': case 'W': cameraPos += speed * cameraFront; break;
     case 's': case 'S': cameraPos -= speed * cameraFront; break;
