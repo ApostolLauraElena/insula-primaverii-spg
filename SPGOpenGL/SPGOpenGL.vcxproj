@@ -121,6 +121,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include=".gitignore" />
+    <None Include="cires_instanced.frag" />
+    <None Include="cires_instanced.vert" />
     <None Include="fragment.frag" />
     <None Include="vertex.vert" />
   </ItemGroup>

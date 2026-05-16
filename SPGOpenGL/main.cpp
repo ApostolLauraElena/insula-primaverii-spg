@@ -10,7 +10,6 @@
 #include "ShaderUtils.h"
 #include "CubGeometrie.h"
 
-
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -24,6 +23,8 @@ const float WATER_COAST_PADDING = 64.0f;
 // --- Global variables ---
 GLuint shader_programme;
 glm::mat4 projectionMatrix, viewMatrix, modelMatrix;
+
+GLuint vaoSeafloor, vboSeafloor;
 
 // Terrain geometry
 GLuint vaoObj, vboObj;
@@ -54,8 +55,26 @@ float axisRotAngle = 0.0f;
 glm::vec3 lightPos(0, 20000, 0);
 glm::vec3 viewPos(2, 3, 6);
 
+// --- Geometrie Cires ---
+// 1. Trunchi
+std::vector<glm::vec3> trunchiVertices;
+std::vector<glm::vec3> trunchiNormals;
+std::vector<glm::vec2> trunchiUvs;
+GLuint vaoTrunchi, vboTrunchi;
 
+// 2. Frunze
+std::vector<glm::vec3> frunzeVertices;
+std::vector<glm::vec3> frunzeNormals;
+std::vector<glm::vec2> frunzeUvs;
+GLuint vaoFrunze, vboFrunze;
 
+// Instantiere si Texturi
+GLuint vboInstanceMatrices;
+GLuint ciresShaderProgram;
+GLuint texTrunchi;
+GLuint texFrunze;
+
+int numTreeInstances = 40; // Numarul de copaci dorit pe insula
 void createFlatTerrain(float size, int subdiviziuni,
     std::vector<glm::vec3>& out_v, std::vector<glm::vec3>& out_n, std::vector<glm::vec2>& out_uv) {
 
@@ -100,11 +119,11 @@ void createWaterPlane(float waterSize, float terrainSize, int subdiviziuni, floa
             float xMax = (x + 1) * pas - waterOffset;
             float zMin = z * pas - waterOffset;
             float zMax = (z + 1) * pas - waterOffset;
-
+            /*
             if (xMin >= -halfTerrain && xMax <= halfTerrain &&
                 zMin >= -halfTerrain && zMax <= halfTerrain) {
                 continue; 
-            }
+            }*/
 
             glm::vec3 v1(xMin, level, zMin);
             glm::vec3 v2(xMax, level, zMin);
@@ -246,7 +265,6 @@ GLuint loadTexture(const char* path) {
     GLuint textureID;
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
-
     int width, height, nrChannels;
 
     unsigned char* data = stbi_load(path, &width, &height, &nrChannels, 4);
@@ -275,8 +293,8 @@ void init() {
 
     createHeightmapTerrain("heightmap.png", 1024.0f, 128, 60.0f, vertices, normals, uvs);
     createWaterPlane(5000.0f, 1024.0f, 128, waterLevel, waterVertices, waterNormals, waterUvs);
-    
-    noiseTexture = loadTexture("noise.jpeg"); 
+
+    noiseTexture = loadTexture("noise.jpeg");
     waterNormalTexture = loadTexture("Water.jpg");
     heightmapMaskTexture = loadTexture("heightmap.png");
     glBindTexture(GL_TEXTURE_2D, heightmapMaskTexture);
@@ -303,6 +321,30 @@ void init() {
     // Attribute 2: UV-uri
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)((vertices.size() + normals.size()) * 3 * sizeof(float)));
+    glBindVertexArray(0);
+    /*
+    float y = waterLevel; // exact la nivelul apei
+    float hs = 512.0f;    // jumatate din 1024
+    float sf[] = {
+        -hs, y, -hs,  0,1,0,  0,0,
+         hs, y, -hs,  0,1,0,  1,0,
+         hs, y,  hs,  0,1,0,  1,1,
+        -hs, y, -hs,  0,1,0,  0,0,
+         hs, y,  hs,  0,1,0,  1,1,
+        -hs, y,  hs,  0,1,0,  0,1,
+    };
+    glGenVertexArrays(1, &vaoSeafloor);
+    glGenBuffers(1, &vboSeafloor);
+    glBindVertexArray(vaoSeafloor);
+    glBindBuffer(GL_ARRAY_BUFFER, vboSeafloor);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(sf), sf, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glBindVertexArray(0);*/
 
     std::vector<float> waterVboData;
     for (size_t i = 0; i < waterVertices.size(); i++) { waterVboData.push_back(waterVertices[i].x); waterVboData.push_back(waterVertices[i].y); waterVboData.push_back(waterVertices[i].z); }
@@ -340,13 +382,161 @@ void init() {
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0); glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float))); glEnableVertexAttribArray(1);
     glBindVertexArray(0);
+   
+    loadOBJ("trunchi.obj", trunchiVertices, trunchiUvs, trunchiNormals);
+    loadOBJ("frunze.obj", frunzeVertices, frunzeUvs, frunzeNormals);
 
+    texTrunchi = loadTexture("bark_base_color.png");
+    texFrunze = loadTexture("leaves_base_color.png");
+
+    // Generam matricile instantelor 
+    std::vector<glm::mat4> instanceMatrices;
+    int copaciGenerati = 0;
+    std::vector<glm::vec3> pozitiiOcupate;
+    int incercari = 0;
+    const int MAX_INCERCARI = 50000;
+    float distantaMinima = 200.0f;
+
+    while (copaciGenerati < numTreeInstances && incercari < MAX_INCERCARI) {
+        incercari++;
+
+        int randomIndex = rand() % vertices.size();
+        glm::vec3 punctPeTeren = vertices[randomIndex];
+
+        if (punctPeTeren.y > waterLevel + 5.0f) {
+
+            if (punctPeTeren.y > waterLevel + 5.0f) {
+
+                bool pozitieBuna = true;
+                for (const glm::vec3& poz : pozitiiOcupate) {
+                    if (glm::distance(punctPeTeren, poz) < distantaMinima) {
+                        pozitieBuna = false;
+                        break; 
+                    }
+                }
+
+                if (pozitieBuna) {
+                    float randomAngle = (rand() % 360) * (PI / 180.0f);
+                    float scaraCopac = 30.0f;
+                    float randomScaleY = scaraCopac * (0.8f + ((rand() % 100) / 200.0f));
+                    float randomScaleXZ = scaraCopac * (0.9f + ((rand() % 100) / 500.0f));
+
+                    glm::mat4 model = glm::translate(punctPeTeren)
+                        * glm::rotate(randomAngle, glm::vec3(0.0f, 1.0f, 0.0f))
+                        * glm::scale(glm::vec3(randomScaleXZ, randomScaleY, randomScaleXZ));
+
+                    instanceMatrices.push_back(model);
+                    pozitiiOcupate.push_back(punctPeTeren); 
+                    copaciGenerati++;
+                }
+            }
+        }
+    }
+
+    std::cout << "S-au generat " << copaciGenerati << " copaci din " << numTreeInstances << " doriti (Distanta: " << distantaMinima << ").\n";
+
+    // Trimitem matricile pe GPU (un singur buffer pentru ambele VAO-uri)
+    glGenBuffers(1, &vboInstanceMatrices);
+    glBindBuffer(GL_ARRAY_BUFFER, vboInstanceMatrices);
+    glBufferData(GL_ARRAY_BUFFER, instanceMatrices.size() * sizeof(glm::mat4), instanceMatrices.data(), GL_STATIC_DRAW);
+
+    // Pregatim VAO pentru TRUNCHI
+    std::vector<float> trunchiVboData;
+    for (size_t i = 0; i < trunchiVertices.size(); i++) {
+        trunchiVboData.push_back(trunchiVertices[i].x); trunchiVboData.push_back(trunchiVertices[i].y); trunchiVboData.push_back(trunchiVertices[i].z);
+    }
+    for (size_t i = 0; i < trunchiNormals.size(); i++) {
+        trunchiVboData.push_back(trunchiNormals[i].x); trunchiVboData.push_back(trunchiNormals[i].y); trunchiVboData.push_back(trunchiNormals[i].z);
+    }
+    for (size_t i = 0; i < trunchiUvs.size(); i++) {
+        trunchiVboData.push_back(trunchiUvs[i].x); trunchiVboData.push_back(trunchiUvs[i].y);
+    }
+
+    glGenVertexArrays(1, &vaoTrunchi);
+    glGenBuffers(1, &vboTrunchi);
+    glBindVertexArray(vaoTrunchi);
+    glBindBuffer(GL_ARRAY_BUFFER, vboTrunchi);
+    glBufferData(GL_ARRAY_BUFFER, trunchiVboData.size() * sizeof(float), trunchiVboData.data(), GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glEnableVertexAttribArray(1); glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)(trunchiVertices.size() * 3 * sizeof(float)));
+    glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)((trunchiVertices.size() + trunchiNormals.size()) * 3 * sizeof(float)));
+
+    // Atasam buffer-ul de instante la VAO-ul trunchiului
+    glBindBuffer(GL_ARRAY_BUFFER, vboInstanceMatrices);
+    for (int i = 0; i < 4; i++) {
+        glEnableVertexAttribArray(3 + i);
+        glVertexAttribPointer(3 + i, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(i * sizeof(glm::vec4)));
+        glVertexAttribDivisor(3 + i, 1);
+    }
+    glBindVertexArray(0);
+
+    // Pregatim VAO pentru FRUNZE
+    std::vector<float> frunzeVboData;
+    for (size_t i = 0; i < frunzeVertices.size(); i++) {
+        frunzeVboData.push_back(frunzeVertices[i].x); frunzeVboData.push_back(frunzeVertices[i].y); frunzeVboData.push_back(frunzeVertices[i].z);
+    }
+    for (size_t i = 0; i < frunzeNormals.size(); i++) {
+        frunzeVboData.push_back(frunzeNormals[i].x); frunzeVboData.push_back(frunzeNormals[i].y); frunzeVboData.push_back(frunzeNormals[i].z);
+    }
+    for (size_t i = 0; i < frunzeUvs.size(); i++) {
+        frunzeVboData.push_back(frunzeUvs[i].x); frunzeVboData.push_back(frunzeUvs[i].y);
+    }
+
+    glGenVertexArrays(1, &vaoFrunze);
+    glGenBuffers(1, &vboFrunze);
+    glBindVertexArray(vaoFrunze);
+    glBindBuffer(GL_ARRAY_BUFFER, vboFrunze);
+    glBufferData(GL_ARRAY_BUFFER, frunzeVboData.size() * sizeof(float), frunzeVboData.data(), GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glEnableVertexAttribArray(1); glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)(frunzeVertices.size() * 3 * sizeof(float)));
+    glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)((frunzeVertices.size() + frunzeNormals.size()) * 3 * sizeof(float)));
+
+    // Atasam ACELASI buffer de instante la VAO-ul frunzelor
+    glBindBuffer(GL_ARRAY_BUFFER, vboInstanceMatrices);
+    for (int i = 0; i < 4; i++) {
+        glEnableVertexAttribArray(3 + i);
+        glVertexAttribPointer(3 + i, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(i * sizeof(glm::vec4)));
+        glVertexAttribDivisor(3 + i, 1);
+    }
+    glBindVertexArray(0);
+
+    // Compilarea shaderului de instanțiere
+    std::string cires_vstext = textFileRead("cires_instanced.vert");
+    std::string cires_fstext = textFileRead("cires_instanced.frag");
+    const char* cires_vs_c = cires_vstext.c_str();
+    const char* cires_fs_c = cires_fstext.c_str();
+
+    GLuint cvs = glCreateShader(GL_VERTEX_SHADER); glShaderSource(cvs, 1, &cires_vs_c, NULL); glCompileShader(cvs);
+    GLuint cfs = glCreateShader(GL_FRAGMENT_SHADER); glShaderSource(cfs, 1, &cires_fs_c, NULL); glCompileShader(cfs);
+
+    ciresShaderProgram = glCreateProgram();
+    glAttachShader(ciresShaderProgram, cvs); glAttachShader(ciresShaderProgram, cfs);
+    glLinkProgram(ciresShaderProgram);
 }
-
 void display() {
     glClearColor(0.5f, 0.8f, 0.9f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glUseProgram(shader_programme);
+
+    // --- Fundul marin opac (ascunde fundalul albastru la coasta) ---
+    glUniform1i(glGetUniformLocation(shader_programme, "isWater"), 0);
+    glUniform1i(glGetUniformLocation(shader_programme, "isGrass"), 0);
+    glUniform1f(glGetUniformLocation(shader_programme, "shellHeight"), 0.0f);
+    glUniform3f(glGetUniformLocation(shader_programme, "objectColor"), 0.28f, 0.18f, 0.08f); // maro
+  
+    modelMatrix = glm::rotate(axisRotAngle, glm::vec3(0, 1, 0));
+    glUniformMatrix4fv(glGetUniformLocation(shader_programme, "modelViewProjectionMatrix"),
+        1, GL_FALSE, glm::value_ptr(projectionMatrix * viewMatrix * modelMatrix));
+    glUniformMatrix4fv(glGetUniformLocation(shader_programme, "modelMatrix"),
+        1, GL_FALSE, glm::value_ptr(modelMatrix));
+    glUniformMatrix4fv(glGetUniformLocation(shader_programme, "normalMatrix"),
+        1, GL_FALSE, glm::value_ptr(glm::transpose(glm::inverse(modelMatrix))));
+    glDisable(GL_CULL_FACE);
+    glBindVertexArray(vaoSeafloor);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glEnable(GL_CULL_FACE);
 
     glUniform3fv(glGetUniformLocation(shader_programme, "lightPos"), 1, glm::value_ptr(lightPos));
     glUniform3fv(glGetUniformLocation(shader_programme, "viewPos"), 1, glm::value_ptr(cameraPos));
@@ -359,7 +549,6 @@ void display() {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, noiseTexture);
     glUniform1i(glGetUniformLocation(shader_programme, "noiseTexture"), 0);
-
 
 
     // 1. Plan plat verde (Iarba Volumetrica)
@@ -420,8 +609,38 @@ void display() {
     glDisable(GL_BLEND);
     glEnable(GL_CULL_FACE);
     glUniform1i(glGetUniformLocation(shader_programme, "isWater"), 0);
-
+    
     // 3. Padure
+    glUseProgram(ciresShaderProgram);
+
+    glUniformMatrix4fv(glGetUniformLocation(ciresShaderProgram, "viewMatrix"), 1, GL_FALSE, glm::value_ptr(viewMatrix));
+    glUniformMatrix4fv(glGetUniformLocation(ciresShaderProgram, "projectionMatrix"), 1, GL_FALSE, glm::value_ptr(projectionMatrix));
+   
+    glUniformMatrix4fv(glGetUniformLocation(ciresShaderProgram, "modelMatrix"), 1, GL_FALSE, glm::value_ptr(modelMatrix));
+
+    glUniform3fv(glGetUniformLocation(ciresShaderProgram, "lightPos"), 1, glm::value_ptr(lightPos));
+    glUniform3fv(glGetUniformLocation(ciresShaderProgram, "viewPos"), 1, glm::value_ptr(cameraPos));
+
+    // --- Randam TRUNCHIUL ---
+    glEnable(GL_CULL_FACE); // Pentru trunchi putem tine culling-ul activ
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texTrunchi);
+    glUniform1i(glGetUniformLocation(ciresShaderProgram, "ciresTexture"), 0);
+
+    glBindVertexArray(vaoTrunchi);
+    glDrawArraysInstanced(GL_TRIANGLES, 0, trunchiVertices.size(), numTreeInstances);
+
+    // --- Randam FRUNZELE ---
+    glDisable(GL_CULL_FACE); // Frunzele sunt plane (fara grosime), trebuie sa le vedem din ambele parti
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texFrunze);
+    glUniform1i(glGetUniformLocation(ciresShaderProgram, "ciresTexture"), 0);
+
+    glBindVertexArray(vaoFrunze);
+    glDrawArraysInstanced(GL_TRIANGLES, 0, frunzeVertices.size(), numTreeInstances);
+
+    glEnable(GL_CULL_FACE); // Reactivam starea implicita
+    glBindVertexArray(0);
 
     glutSwapBuffers();
 }

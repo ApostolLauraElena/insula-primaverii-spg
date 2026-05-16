@@ -54,7 +54,7 @@ void main()
         float crest = smoothstep(waterLevel - 0.4, waterLevel + 1.4, pos.y);
 
         vec3 deepColor = vec3(0.05, 0.20, 0.45);   
-vec3 shallowColor = vec3(0.30, 0.55, 0.85);
+        vec3 shallowColor = vec3(0.30, 0.55, 0.85);
         vec3 waterColor = mix(deepColor, shallowColor, crest);
         waterColor *= 0.55 + diff * 0.55;
         waterColor += vec3(1.0, 0.96, 0.82) * spec * 1.15;
