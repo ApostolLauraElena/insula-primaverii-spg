@@ -189,9 +189,15 @@ void createHeightmapTerrain(const char* path, float size, int subdiviziuni, floa
     auto sampleHeight = [&](float u, float v) -> float {
         float h = sampleRawHeight(u, v);
         h = h * h * (3.0f - 2.0f * h);
-        return h * heightScale;
-        };
 
+        float fadeU = glm::min(u, 1.0f - u);
+        float fadeV = glm::min(v, 1.0f - v);
+        float distEdge = glm::min(fadeU, fadeV);
+
+        float fade = glm::smoothstep(0.0f, 0.1f, distEdge);
+
+        return h * heightScale * fade;
+    };
     for (int z = 0; z < gridSize; ++z) {
         for (int x = 0; x < gridSize; ++x) {
             float u = (float)x / subdiviziuni;
