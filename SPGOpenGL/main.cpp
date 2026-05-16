@@ -96,36 +96,30 @@ void createWaterPlane(float waterSize, float terrainSize, int subdiviziuni, floa
 
     for (int z = 0; z < subdiviziuni; ++z) {
         for (int x = 0; x < subdiviziuni; ++x) {
-            // Calculăm limitele (stânga, dreapta, jos, sus) pentru celula curentă
             float xMin = x * pas - waterOffset;
             float xMax = (x + 1) * pas - waterOffset;
             float zMin = z * pas - waterOffset;
             float zMax = (z + 1) * pas - waterOffset;
 
-            // Omitere: dacă întreaga celulă se află în interiorul zonei de 1024x1024 a terenului
             if (xMin >= -halfTerrain && xMax <= halfTerrain &&
                 zMin >= -halfTerrain && zMax <= halfTerrain) {
-                continue; // Trecem peste, lăsând o "gaură" rectangulară pentru insulă
+                continue; 
             }
 
-            // Cele 4 vârfuri ale celulei de apă
             glm::vec3 v1(xMin, level, zMin);
             glm::vec3 v2(xMax, level, zMin);
             glm::vec3 v3(xMin, level, zMax);
             glm::vec3 v4(xMax, level, zMax);
 
-            // Coordonatele UV pentru maparea texturii de apă normală
             glm::vec2 uv1((float)x / subdiviziuni, (float)z / subdiviziuni);
             glm::vec2 uv2((float)(x + 1) / subdiviziuni, (float)z / subdiviziuni);
             glm::vec2 uv3((float)x / subdiviziuni, (float)(z + 1) / subdiviziuni);
             glm::vec2 uv4((float)(x + 1) / subdiviziuni, (float)(z + 1) / subdiviziuni);
 
-            // Triunghiul 1
             out_v.push_back(v1); out_n.push_back(normala); out_uv.push_back(uv1);
             out_v.push_back(v3); out_n.push_back(normala); out_uv.push_back(uv3);
             out_v.push_back(v2); out_n.push_back(normala); out_uv.push_back(uv2);
 
-            // Triunghiul 2
             out_v.push_back(v2); out_n.push_back(normala); out_uv.push_back(uv2);
             out_v.push_back(v3); out_n.push_back(normala); out_uv.push_back(uv3);
             out_v.push_back(v4); out_n.push_back(normala); out_uv.push_back(uv4);
@@ -255,12 +249,9 @@ GLuint loadTexture(const char* path) {
 
     int width, height, nrChannels;
 
-    // MODIFICARE: Schimbăm ultimul parametru din 0 în 4 (STBI_rgb_alpha)
-    // Acest lucru forțează stbi_load să returneze ÎNTOTDEAUNA un buffer RGBA (4 octeți/pixel)
     unsigned char* data = stbi_load(path, &width, &height, &nrChannels, 4);
 
     if (data) {
-        // Deoarece am forțat încărcarea în 4 canale, formatul va fi mereu GL_RGBA
         GLenum format = GL_RGBA;
 
         glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
@@ -283,10 +274,9 @@ void init() {
     glewInit();
 
     createHeightmapTerrain("heightmap.png", 1024.0f, 128, 60.0f, vertices, normals, uvs);
-    // În loc de vechiul apel, folosește-l pe acesta:
-    createWaterPlane(1400.0f, 1024.0f, 128, waterLevel, waterVertices, waterNormals, waterUvs);
-    // Incarcam textura de noise
-    noiseTexture = loadTexture("noise.jpeg"); //noise.png
+    createWaterPlane(5000.0f, 1024.0f, 128, waterLevel, waterVertices, waterNormals, waterUvs);
+    
+    noiseTexture = loadTexture("noise.jpeg"); 
     waterNormalTexture = loadTexture("Water.jpg");
     heightmapMaskTexture = loadTexture("heightmap.png");
     glBindTexture(GL_TEXTURE_2D, heightmapMaskTexture);
@@ -295,7 +285,6 @@ void init() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    // Construim buffer-ul interclas�nd toate cele 3 atribute (pozitii, normale, uv-uri) 
     std::vector<float> vboData;
     for (size_t i = 0; i < vertices.size(); i++) { vboData.push_back(vertices[i].x); vboData.push_back(vertices[i].y); vboData.push_back(vertices[i].z); }
     for (size_t i = 0; i < normals.size(); i++) { vboData.push_back(normals[i].x); vboData.push_back(normals[i].y); vboData.push_back(normals[i].z); }
@@ -370,6 +359,8 @@ void display() {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, noiseTexture);
     glUniform1i(glGetUniformLocation(shader_programme, "noiseTexture"), 0);
+
+
 
     // 1. Plan plat verde (Iarba Volumetrica)
     glBindVertexArray(vaoObj);
@@ -468,7 +459,13 @@ void keyboard(unsigned char key, int x, int y) {
     case 'r': case 'R': axisRotAngle += 0.05f; break;
     case 'f': case 'F': axisRotAngle -= 0.05f; break;
     }
+
     if (cameraPos.y < 5.0f) cameraPos.y = 5.0f;
+
+    const float LIMITA_APA = 2300.0f; 
+    cameraPos.x = glm::clamp(cameraPos.x, -LIMITA_APA, LIMITA_APA);
+    cameraPos.z = glm::clamp(cameraPos.z, -LIMITA_APA, LIMITA_APA);
+
     viewMatrix = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
     glutPostRedisplay();
 }
@@ -478,7 +475,7 @@ int main(int argc, char** argv) {
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
     glutInitWindowPosition(200, 200);
     glutInitWindowSize(900, 700);
-    glutCreateWindow("SPG - Plan Verde");
+    glutCreateWindow("SPG");
     init();
     glutIdleFunc(display);
     glutDisplayFunc(display);

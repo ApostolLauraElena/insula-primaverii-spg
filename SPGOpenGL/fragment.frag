@@ -16,8 +16,8 @@ uniform float shellHeight;
 uniform float time;
 uniform float waterLevel;
 uniform float terrainSize;
-uniform sampler2D noiseTexture;       // Pentru iarba - TREBUIE SA RAMANA
-uniform sampler2D waterNormalTexture; // Pentru apa
+uniform sampler2D noiseTexture;       
+uniform sampler2D waterNormalTexture; 
 
 vec3 lighting(vec3 objColor, vec3 p, vec3 n, vec3 lPos, vec3 vPos,
               vec3 ambient, vec3 lightColor, vec3 specular, float specPower)
@@ -34,7 +34,7 @@ vec3 lighting(vec3 objColor, vec3 p, vec3 n, vec3 lPos, vec3 vPos,
 
 void main()
 {
-    // 1. Logica pentru Apa (fara discard, curata, exact cum ai vrut)
+    // 1. Logica pentru Apa 
     if (isWater == 1) {
         vec2 uvA = texCoord * 22.0 + vec2(time * 0.035, time * 0.018);
         vec2 uvB = texCoord * 41.0 + vec2(-time * 0.020, time * 0.045);
@@ -53,8 +53,8 @@ void main()
         float fresnel = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 5.0);
         float crest = smoothstep(waterLevel - 0.4, waterLevel + 1.4, pos.y);
 
-        vec3 deepColor = vec3(0.02, 0.16, 0.22);
-        vec3 shallowColor = vec3(0.06, 0.36, 0.42);
+        vec3 deepColor = vec3(0.05, 0.20, 0.45);   
+vec3 shallowColor = vec3(0.30, 0.55, 0.85);
         vec3 waterColor = mix(deepColor, shallowColor, crest);
         waterColor *= 0.55 + diff * 0.55;
         waterColor += vec3(1.0, 0.96, 0.82) * spec * 1.15;
@@ -64,7 +64,7 @@ void main()
         return;
     }
 
-    // 2. Logica pentru Iarba (AICI TREBUIE DISCARD-UL INAPOI!)
+    // 2. Logica pentru Iarba 
     if (isGrass == 1 && shellHeight > 0.0) {
         vec2 uv1 = texCoord * 17.0;
         vec2 uv2 = texCoord * 43.0 + vec2(0.37, 0.71);

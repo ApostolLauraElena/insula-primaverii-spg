@@ -17,17 +17,15 @@ out vec3 normal;
 out vec3 pos;
 out vec3 localPos;
 out vec2 texCoord;
-out vec3 localPosUndisplaced; // <-- VARIABILĂ NOUĂ
+out vec3 localPosUndisplaced; 
 
 const float TWO_PI = 6.28318530718;
 
-// Modificăm parametrul: origP va fi poziția inițială fixă a vârfului
-vec3 gerstnerWave(vec2 direction, float amplitude, float wavelength, float speed, float steepness,
-                  vec3 origP, inout vec3 tangent, inout vec3 binormal)
+vec3 gerstnerWave(vec2 direction, float amplitude, float wavelength, float speed, float steepness, vec3 origP, inout vec3 tangent, inout vec3 binormal)
 {
     vec2 d = normalize(direction);
     float k = TWO_PI / wavelength;
-    float phase = k * dot(d, origP.xz) + speed * time; // <-- Folosește origP static
+    float phase = k * dot(d, origP.xz) + speed * time; 
     float s = sin(phase);
     float c = cos(phase);
     float q = steepness / (k * amplitude * 4.0);
@@ -53,7 +51,6 @@ void main()
         vec3 tangent = vec3(1.0, 0.0, 0.0);
         vec3 binormal = vec3(0.0, 0.0, 1.0);
 
-        // Trimitem origP la toate valurile pentru a preveni feedback-ul distructiv
         p += gerstnerWave(vec2(1.0, 0.35), 1.6, 120.0, 0.90, 0.62, origP, tangent, binormal);
         p += gerstnerWave(vec2(0.35, 1.0), 0.9, 54.0, 1.55, 0.48, origP, tangent, binormal);
         p += gerstnerWave(vec2(-0.8, 0.6), 0.55, 28.0, 2.10, 0.34, origP, tangent, binormal);
