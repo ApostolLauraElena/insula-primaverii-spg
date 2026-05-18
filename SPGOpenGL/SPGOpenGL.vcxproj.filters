@@ -35,9 +35,6 @@
     <ClInclude Include="stb_image.h">
       <Filter>src</Filter>
     </ClInclude>
-    <ClInclude Include="CubGeometrie.h">
-      <Filter>src</Filter>
-    </ClInclude>
     <ClInclude Include="ShaderUtils.h">
       <Filter>src</Filter>
     </ClInclude>
