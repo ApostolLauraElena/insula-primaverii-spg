@@ -19,6 +19,9 @@ uniform float terrainSize;
 uniform sampler2D noiseTexture;       
 uniform sampler2D waterNormalTexture; 
 
+uniform int isSun;
+uniform sampler2D sunTexture;
+
 vec3 lighting(vec3 objColor, vec3 p, vec3 n, vec3 lPos, vec3 vPos,
               vec3 ambient, vec3 lightColor, vec3 specular, float specPower)
 {
@@ -34,6 +37,15 @@ vec3 lighting(vec3 objColor, vec3 p, vec3 n, vec3 lPos, vec3 vPos,
 
 void main()
 {
+    // 0. Logica pentru Soare Billboard
+    if (isSun == 1) {
+        vec4 texColor = texture(sunTexture, texCoord);
+    
+        if (texColor.a < 0.05) discard; 
+    
+        fragColor = texColor;
+        return;
+    }
     // 1. Logica pentru Apa 
     if (isWater == 1) {
         vec2 uvA = texCoord * 22.0 + vec2(time * 0.035, -time * 0.018);
@@ -73,7 +85,7 @@ void main()
         float n2 = texture(noiseTexture, uv2).r;
         float noiseVal = mix(n1, n2, 0.35);
 
-        // Daca valoarea de noise e mai mica decat inaltimea stratului curent, „gaurim” stratul
+        // Daca valoarea de noise e mai mica decat inaltimea stratului curent, â€žgaurimâ€ stratul
         if (noiseVal < pow(shellHeight, 1.2)) {
             discard; 
         }

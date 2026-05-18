@@ -9,7 +9,7 @@
 #include "objloader.hpp"
 #include "ShaderUtils.h"
 #include "CubGeometrie.h"
-
+#include <math.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -54,6 +54,10 @@ bool firstMouse = true;
 float axisRotAngle = 0.0f;
 glm::vec3 lightPos(0, 20000, 0);
 glm::vec3 viewPos(2, 3, 6);
+
+
+GLuint vaoSun, vboSun;
+GLuint sunTexture;
 
 // --- Geometrie Cires ---
 // 1. Trunchi
@@ -517,6 +521,46 @@ void init() {
     ciresShaderProgram = glCreateProgram();
     glAttachShader(ciresShaderProgram, cvs); glAttachShader(ciresShaderProgram, cfs);
     glLinkProgram(ciresShaderProgram);
+
+    float quadVertices[] = {
+        // Poziție          // UV
+        -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
+        -1.0f, -1.0f, 0.0f,  0.0f, 0.0f,
+         1.0f, -1.0f, 0.0f,  1.0f, 0.0f,
+
+        -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
+         1.0f, -1.0f, 0.0f,  1.0f, 0.0f,
+         1.0f,  1.0f, 0.0f,  1.0f, 1.0f
+    };
+
+    glGenVertexArrays(1, &vaoSun);
+    glGenBuffers(1, &vboSun);
+    glBindVertexArray(vaoSun);
+    glBindBuffer(GL_ARRAY_BUFFER, vboSun);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+    // Atribut Poziție (location = 0)
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    // Atribut UV (location = 2 - verifică shader-ul tău, vTexCoord e la locația 2)
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
+
+    int width, height, nrChannels;
+    unsigned char* data = stbi_load("sun.png", &width, &height, &nrChannels, 0); 
+    glGenTextures(1, &sunTexture);
+    glBindTexture(GL_TEXTURE_2D, sunTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    if (data) {
+        GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
+        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    stbi_image_free(data);
 }
 void display() {
     glClearColor(0.5f, 0.8f, 0.9f, 1.0f);
@@ -541,6 +585,9 @@ void display() {
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glEnable(GL_CULL_FACE);
 
+    lightPos = glm::vec3(2500.0f, 4500.0f, 2000.0f);
+
+    glUniform3fv(glGetUniformLocation(shader_programme, "lightPos"), 1, glm::value_ptr(lightPos));
     glUniform3fv(glGetUniformLocation(shader_programme, "lightPos"), 1, glm::value_ptr(lightPos));
     glUniform3fv(glGetUniformLocation(shader_programme, "viewPos"), 1, glm::value_ptr(cameraPos));
     glUniform1f(glGetUniformLocation(shader_programme, "time"), glutGet(GLUT_ELAPSED_TIME) / 1000.0f);
@@ -645,12 +692,54 @@ void display() {
     glEnable(GL_CULL_FACE); // Reactivam starea implicita
     glBindVertexArray(0);
 
+    // --- 4. Randare Soare Billboard ---
+    glUseProgram(shader_programme);
+
+    // Resetăm restul efectelor
+    glUniform1i(glGetUniformLocation(shader_programme, "isWater"), 0);
+    glUniform1i(glGetUniformLocation(shader_programme, "isGrass"), 0);
+    glUniform1f(glGetUniformLocation(shader_programme, "shellHeight"), 0.0f);
+
+    // modul Soare
+    glUniform1i(glGetUniformLocation(shader_programme, "isSun"), 1);
+
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, sunTexture);
+    glUniform1i(glGetUniformLocation(shader_programme, "sunTexture"), 2);
+
+    glm::vec3 cameraRight = glm::normalize(glm::cross(cameraFront, cameraUp));
+    glm::vec3 cameraUpActual = glm::normalize(glm::cross(cameraRight, cameraFront));
+
+    glm::mat4 modelSoare = glm::mat4(1.0f);
+    float scaleSoare = 15000.0f;
+    modelSoare[0] = glm::vec4(cameraRight * scaleSoare, 0.0f);
+    modelSoare[1] = glm::vec4(cameraUpActual * scaleSoare, 0.0f);
+    modelSoare[2] = glm::vec4(-cameraFront * scaleSoare, 0.0f);
+    modelSoare[3] = glm::vec4(lightPos, 1.0f); 
+
+    glUniformMatrix4fv(glGetUniformLocation(shader_programme, "modelViewProjectionMatrix"),
+        1, GL_FALSE, glm::value_ptr(projectionMatrix * viewMatrix * modelSoare));
+    glUniformMatrix4fv(glGetUniformLocation(shader_programme, "modelMatrix"),
+        1, GL_FALSE, glm::value_ptr(modelSoare));
+    glUniformMatrix4fv(glGetUniformLocation(shader_programme, "normalMatrix"),
+        1, GL_FALSE, glm::value_ptr(glm::transpose(glm::inverse(modelSoare))));
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glBindVertexArray(vaoSun);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+
+    glDisable(GL_BLEND); 
+    glUniform1i(glGetUniformLocation(shader_programme, "isSun"), 0); 
+
     glutSwapBuffers();
 }
 
 void reshape(int w, int h) {
     glViewport(0, 0, w, h);
-    projectionMatrix = glm::perspective(PI / 4, (float)w / h, 0.1f, 2000.0f);
+    projectionMatrix = glm::perspective(PI / 4, (float)w / h, 0.1f, 12000.0f);
     viewMatrix = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
 }
 
@@ -671,6 +760,7 @@ void mouseCallback(int xpos, int ypos) {
 
 void keyboard(unsigned char key, int x, int y) {
     float speed = 15.0f;
+    float rotSpeed = 2.0f;
     switch (key) {
     case 'w': case 'W': cameraPos += speed * cameraFront; break;
     case 's': case 'S': cameraPos -= speed * cameraFront; break;
@@ -680,7 +770,17 @@ void keyboard(unsigned char key, int x, int y) {
     case 'q': case 'Q': cameraPos -= speed * cameraUp; break;
     case 'r': case 'R': axisRotAngle += 0.05f; break;
     case 'f': case 'F': axisRotAngle -= 0.05f; break;
+    case 't': case 'T': pitch += rotSpeed; break;
+    case 'g': case 'G': pitch -= rotSpeed; break;
     }
+    if (pitch > 89.0f) pitch = 89.0f;
+    if (pitch < -89.0f) pitch = -89.0f;
+
+    glm::vec3 front;
+    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.y = sin(glm::radians(pitch));
+    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    cameraFront = glm::normalize(front);
 
     if (cameraPos.y < 50.0f) cameraPos.y = 50.0f;
 
