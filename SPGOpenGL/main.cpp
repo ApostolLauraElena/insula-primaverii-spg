@@ -9,28 +9,28 @@
 #include "objloader.hpp"
 #include "ShaderUtils.h"
 
-#include <math.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+// --- Texturi globale ---
 GLuint noiseTexture;
 GLuint waterNormalTexture;
 GLuint heightmapMaskTexture;
 #define PI glm::pi<float>()
 
-// --- Global variables ---
+// --- Variabile pentru shadere si matrici de transformare ---
 GLuint shader_programme;
 glm::mat4 projectionMatrix, viewMatrix, modelMatrix;
 
 //GLuint vaoSeafloor, vboSeafloor;
 
-// Terrain geometry
+// --- Date geometrie: Teren ---
 GLuint vaoObj, vboObj;
 std::vector<glm::vec3> vertices;
 std::vector<glm::vec3> normals;
 std::vector<glm::vec2> uvs;
 
-// Water geometry
+// --- Date geometrie: Apa ---
 GLuint vaoWater, vboWater;
 std::vector<glm::vec3> waterVertices;
 std::vector<glm::vec3> waterNormals;
@@ -47,6 +47,7 @@ float pitch = -20.0f;
 float lastX = 450.0f, lastY = 350.0f;
 bool firstMouse = true;
 
+// --- Setari globale pentru lumina si soare ---
 float axisRotAngle = 0.0f;
 glm::vec3 lightPos(0, 20000, 0);
 glm::vec3 viewPos(2, 3, 6);
@@ -75,6 +76,8 @@ GLuint texTrunchi;
 GLuint texFrunze;
 
 int numTreeInstances = 30; // Numarul de copaci dorit pe insula
+
+// Genereaza un teren complet plat impartit intr-un grid de triunghiuri
 void createFlatTerrain(float size, int subdiviziuni,
     std::vector<glm::vec3>& out_v, std::vector<glm::vec3>& out_n, std::vector<glm::vec2>& out_uv) {
 
@@ -105,6 +108,7 @@ void createFlatTerrain(float size, int subdiviziuni,
     std::cout << "Plan plat generat! Varfuri: " << out_v.size() << "\n";
 }
 
+// Genereaza geometria pentru planul de apa
 void createWaterPlane(float waterSize, float terrainSize, int subdiviziuni, float level,
     std::vector<glm::vec3>& out_v, std::vector<glm::vec3>& out_n, std::vector<glm::vec2>& out_uv) {
 
@@ -148,6 +152,7 @@ void createWaterPlane(float waterSize, float terrainSize, int subdiviziuni, floa
     std::cout << "Inelul de apa geometric a fost generat! Varfuri: " << out_v.size() << "\n";
 }
 
+// Citeste o imagine (heightmap) si genereaza teren 3D cu denivelari bazate pe culorile pixelilor
 void createHeightmapTerrain(const char* path, float size, int subdiviziuni, float heightScale,
     std::vector<glm::vec3>& out_v, std::vector<glm::vec3>& out_n, std::vector<glm::vec2>& out_uv) {
 
@@ -267,6 +272,8 @@ void createHeightmapTerrain(const char* path, float size, int subdiviziuni, floa
     std::cout << "Teren heightmap generat! Varfuri: " << out_v.size()
         << " | Heightmap: " << width << "x" << height << " | Subdiviziuni: " << subdiviziuni << "\n";
 }
+
+// Incarca o textura din fisier folosind stb_image si genereaza mipmap-uri
 GLuint loadTexture(const char* path) {
     GLuint textureID;
     glGenTextures(1, &textureID);
@@ -293,13 +300,18 @@ GLuint loadTexture(const char* path) {
     stbi_image_free(data);
     return textureID;
 }
+
 void init() {
+
+    // Activam testul de adancime (Z-buffer) si initializam extensiile OpenGL
     glEnable(GL_DEPTH_TEST);
     glewInit();
 
+    // 1. Generare geometrie initiala (teren si apa)
     createHeightmapTerrain("heightmap.png", 1024.0f, 128, 60.0f, vertices, normals, uvs);
     createWaterPlane(5000.0f, 1024.0f, 128, waterLevel, waterVertices, waterNormals, waterUvs);
 
+    // 2. Incarcarea texturilor
     noiseTexture = loadTexture("noise.jpeg");
     waterNormalTexture = loadTexture("Water.jpg");
     heightmapMaskTexture = loadTexture("heightmap.png");
@@ -309,6 +321,7 @@ void init() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+    // 3. Configurare VAO/VBO pentru Teren
     std::vector<float> vboData;
     for (size_t i = 0; i < vertices.size(); i++) { vboData.push_back(vertices[i].x); vboData.push_back(vertices[i].y); vboData.push_back(vertices[i].z); }
     for (size_t i = 0; i < normals.size(); i++) { vboData.push_back(normals[i].x); vboData.push_back(normals[i].y); vboData.push_back(normals[i].z); }
@@ -352,6 +365,7 @@ void init() {
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
     glBindVertexArray(0);*/
 
+    // 4. Configurare VAO/VBO pentru Apa
     std::vector<float> waterVboData;
     for (size_t i = 0; i < waterVertices.size(); i++) { waterVboData.push_back(waterVertices[i].x); waterVboData.push_back(waterVertices[i].y); waterVboData.push_back(waterVertices[i].z); }
     for (size_t i = 0; i < waterNormals.size(); i++) { waterVboData.push_back(waterNormals[i].x); waterVboData.push_back(waterNormals[i].y); waterVboData.push_back(waterNormals[i].z); }
@@ -367,6 +381,7 @@ void init() {
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)((waterVertices.size() + waterNormals.size()) * 3 * sizeof(float)));
 
+    // 5. Incarcarea si compilarea shaderului principal (teren, apa, soare)
     std::string vstext = textFileRead("vertex.vert");
     std::string fstext = textFileRead("fragment.frag");
     const char* vs_c = vstext.c_str();
@@ -382,13 +397,14 @@ void init() {
     glLinkProgram(shader_programme);
     printProgramInfoLog(shader_programme);
 
+    // 6. Setup pentru copaci: Incarcare modele 3D si texturi
     loadOBJ("trunchi.obj", trunchiVertices, trunchiUvs, trunchiNormals);
     loadOBJ("frunze.obj", frunzeVertices, frunzeUvs, frunzeNormals);
 
     texTrunchi = loadTexture("bark_base_color.png");
     texFrunze = loadTexture("leaves_base_color.png");
 
-    // Generam matricile instantelor 
+    // 7. Generarea pozitiilor aleatoare pentru copaci pe insula
     std::vector<glm::mat4> instanceMatrices;
     int copaciGenerati = 0;
     std::vector<glm::vec3> pozitiiOcupate;
@@ -431,12 +447,13 @@ void init() {
 
     std::cout << "S-au generat " << copaciGenerati << " copaci din " << numTreeInstances << " doriti (Distanta: " << distantaMinima << ").\n";
     numTreeInstances = copaciGenerati;
-    // Trimitem matricile pe GPU (un singur buffer pentru ambele VAO-uri)
+
+    // 8. Trimitem matricile de instantiere catre GPU intr-un buffer separat
     glGenBuffers(1, &vboInstanceMatrices);
     glBindBuffer(GL_ARRAY_BUFFER, vboInstanceMatrices);
     glBufferData(GL_ARRAY_BUFFER, instanceMatrices.size() * sizeof(glm::mat4), instanceMatrices.data(), GL_STATIC_DRAW);
 
-    // Pregatim VAO pentru TRUNCHI
+    // 9. Configurare VAO pentru Trunchi (include pointeri catre bufferul de instante)
     std::vector<float> trunchiVboData;
     for (size_t i = 0; i < trunchiVertices.size(); i++) {
         trunchiVboData.push_back(trunchiVertices[i].x); trunchiVboData.push_back(trunchiVertices[i].y); trunchiVboData.push_back(trunchiVertices[i].z);
@@ -458,7 +475,6 @@ void init() {
     glEnableVertexAttribArray(1); glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)(trunchiVertices.size() * 3 * sizeof(float)));
     glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)((trunchiVertices.size() + trunchiNormals.size()) * 3 * sizeof(float)));
 
-    // Atasam buffer-ul de instante la VAO-ul trunchiului
     glBindBuffer(GL_ARRAY_BUFFER, vboInstanceMatrices);
     for (int i = 0; i < 4; i++) {
         glEnableVertexAttribArray(3 + i);
@@ -467,7 +483,7 @@ void init() {
     }
     glBindVertexArray(0);
 
-    // Pregatim VAO pentru FRUNZE
+    // 10. Configurare VAO pentru Frunze (refoloseste bufferul de instante de la trunchi)
     std::vector<float> frunzeVboData;
     for (size_t i = 0; i < frunzeVertices.size(); i++) {
         frunzeVboData.push_back(frunzeVertices[i].x); frunzeVboData.push_back(frunzeVertices[i].y); frunzeVboData.push_back(frunzeVertices[i].z);
@@ -489,7 +505,6 @@ void init() {
     glEnableVertexAttribArray(1); glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)(frunzeVertices.size() * 3 * sizeof(float)));
     glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)((frunzeVertices.size() + frunzeNormals.size()) * 3 * sizeof(float)));
 
-    // Atasam ACELASI buffer de instante la VAO-ul frunzelor
     glBindBuffer(GL_ARRAY_BUFFER, vboInstanceMatrices);
     for (int i = 0; i < 4; i++) {
         glEnableVertexAttribArray(3 + i);
@@ -498,7 +513,7 @@ void init() {
     }
     glBindVertexArray(0);
 
-    // Compilarea shaderului de instanțiere
+    // 11. Compilare shader dedicat pentru obiecte instantiate (padure)
     std::string cires_vstext = textFileRead("cires_instanced.vert");
     std::string cires_fstext = textFileRead("cires_instanced.frag");
     const char* cires_vs_c = cires_vstext.c_str();
@@ -511,8 +526,9 @@ void init() {
     glAttachShader(ciresShaderProgram, cvs); glAttachShader(ciresShaderProgram, cfs);
     glLinkProgram(ciresShaderProgram);
 
+    // 12. Setup geometrie si textura pentru Soare (quad tip Billboard)
     float quadVertices[] = {
-        // Poziție          // UV
+        // Pozitie          // UV
         -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
         -1.0f, -1.0f, 0.0f,  0.0f, 0.0f,
          1.0f, -1.0f, 0.0f,  1.0f, 0.0f,
@@ -528,10 +544,10 @@ void init() {
     glBindBuffer(GL_ARRAY_BUFFER, vboSun);
     glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
 
-    // Atribut Poziție (location = 0)
+    // Atribut Pozitie (location = 0)
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    // Atribut UV (location = 2 - verifică shader-ul tău, vTexCoord e la locația 2)
+    // Atribut UV (location = 2 - verifica shader, vTexCoord e la locatia 2)
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(2);
     glBindVertexArray(0);
@@ -551,10 +567,13 @@ void init() {
     }
     stbi_image_free(data);
 }
+
 void display() {
+    // Curatam ecranul si bufferul de adancime la fiecare cadru
     glClearColor(0.5f, 0.8f, 0.9f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glUseProgram(shader_programme);
+
     /*
     // --- Fundul marin opac (ascunde fundalul albastru la coasta) ---
     glUniform1i(glGetUniformLocation(shader_programme, "isWater"), 0);
@@ -574,7 +593,9 @@ void display() {
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glEnable(GL_CULL_FACE);
     */
-    lightPos = glm::vec3(2500.0f, 4500.0f, 2000.0f);
+
+    // Lumina si soare
+    lightPos = glm::vec3(2500.0f, 1500.0f, 2000.0f);
 
     glUniform3fv(glGetUniformLocation(shader_programme, "lightPos"), 1, glm::value_ptr(lightPos));
     glUniform3fv(glGetUniformLocation(shader_programme, "viewPos"), 1, glm::value_ptr(cameraPos));
@@ -588,8 +609,6 @@ void display() {
     glBindTexture(GL_TEXTURE_2D, noiseTexture);
     glUniform1i(glGetUniformLocation(shader_programme, "noiseTexture"), 0);
 
-
-    // 1. Plan plat verde (Iarba Volumetrica)
     glBindVertexArray(vaoObj);
     glUniform3f(colorLoc, 0.22f, 0.48f, 0.16f);
     modelMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 0))
@@ -601,11 +620,12 @@ void display() {
     glUniformMatrix4fv(glGetUniformLocation(shader_programme, "normalMatrix"),
         1, GL_FALSE, glm::value_ptr(glm::transpose(glm::inverse(modelMatrix))));
 
-    // Setari pt iarba
     glUniform1i(glGetUniformLocation(shader_programme, "isWater"), 0);
     glUniform1i(glGetUniformLocation(shader_programme, "isGrass"), 1);
     glDisable(GL_CULL_FACE);
 
+    //  Randare Iarba Volumetrica (Shell Rendering)
+    // Desenam terenul de mai multe ori, deplasandu-l treptat pe normala pentru iluzia de volum
     int numShells = 32;
     for (int i = 0; i < numShells; ++i) {
         float shellHeight = (float)i / (float)numShells;
@@ -617,7 +637,8 @@ void display() {
     glUniform1i(glGetUniformLocation(shader_programme, "isGrass"), 0);
     glUniform1f(glGetUniformLocation(shader_programme, "shellHeight"), 0.0f);
 
-    // 2. Apa
+    // Randare Apa
+    // Activam blending-ul pentru transparenta apei si dezactivam depth mask-ul pentru a nu scrie in Z-buffer
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
     glUniform1i(glGetUniformLocation(shader_programme, "waterNormalTexture"), 1);
@@ -635,6 +656,7 @@ void display() {
     glUniformMatrix4fv(glGetUniformLocation(shader_programme, "normalMatrix"),
         1, GL_FALSE, glm::value_ptr(glm::transpose(glm::inverse(modelMatrix))));
 
+
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(GL_FALSE);
@@ -645,7 +667,7 @@ void display() {
     glEnable(GL_CULL_FACE);
     glUniform1i(glGetUniformLocation(shader_programme, "isWater"), 0);
     
-    // 3. Padure
+    // Padure
     glUseProgram(ciresShaderProgram);
 
     glUniformMatrix4fv(glGetUniformLocation(ciresShaderProgram, "viewMatrix"), 1, GL_FALSE, glm::value_ptr(viewMatrix));
@@ -656,7 +678,8 @@ void display() {
     glUniform3fv(glGetUniformLocation(ciresShaderProgram, "lightPos"), 1, glm::value_ptr(lightPos));
     glUniform3fv(glGetUniformLocation(ciresShaderProgram, "viewPos"), 1, glm::value_ptr(cameraPos));
 
-    // --- Randam TRUNCHIUL ---
+    // Randam TRUNCHIUL
+    // Desenam toti copacii dintr-un singur apel pe GPU pentru performanta maxima
     glEnable(GL_CULL_FACE); // Pentru trunchi putem tine culling-ul activ
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texTrunchi);
@@ -665,7 +688,7 @@ void display() {
     glBindVertexArray(vaoTrunchi);
     glDrawArraysInstanced(GL_TRIANGLES, 0, trunchiVertices.size(), numTreeInstances);
 
-    // --- Randam FRUNZELE ---
+    // Randam FRUNZELE 
     glDisable(GL_CULL_FACE); // Frunzele sunt plane (fara grosime), trebuie sa le vedem din ambele parti
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texFrunze);
@@ -677,15 +700,13 @@ void display() {
     glEnable(GL_CULL_FACE); // Reactivam starea implicita
     glBindVertexArray(0);
 
-    // --- 4. Randare Soare Billboard ---
+    // Randare Soare Billboard
     glUseProgram(shader_programme);
 
-    // Resetăm restul efectelor
     glUniform1i(glGetUniformLocation(shader_programme, "isWater"), 0);
     glUniform1i(glGetUniformLocation(shader_programme, "isGrass"), 0);
     glUniform1f(glGetUniformLocation(shader_programme, "shellHeight"), 0.0f);
 
-    // modul Soare
     glUniform1i(glGetUniformLocation(shader_programme, "isSun"), 1);
 
     glActiveTexture(GL_TEXTURE2);
@@ -696,7 +717,7 @@ void display() {
     glm::vec3 cameraUpActual = glm::normalize(glm::cross(cameraRight, cameraFront));
 
     glm::mat4 modelSoare = glm::mat4(1.0f);
-    float scaleSoare = 15000.0f;
+    float scaleSoare = 10000.0f;
     modelSoare[0] = glm::vec4(cameraRight * scaleSoare, 0.0f);
     modelSoare[1] = glm::vec4(cameraUpActual * scaleSoare, 0.0f);
     modelSoare[2] = glm::vec4(-cameraFront * scaleSoare, 0.0f);
@@ -722,12 +743,14 @@ void display() {
     glutSwapBuffers();
 }
 
+// Ajusteaza matricea de proiectie atunci cand se redimensioneaza fereastra aplicatiei
 void reshape(int w, int h) {
     glViewport(0, 0, w, h);
-    projectionMatrix = glm::perspective(PI / 4, (float)w / h, 0.1f, 12000.0f);
+    projectionMatrix = glm::perspective(PI / 4, (float)w / h, 0.1f, 2000.0f);
     viewMatrix = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
 }
 
+// Calculeaza noile unghiuri ale camerei (yaw si pitch) pe baza miscarii mouse-ului
 void mouseCallback(int xpos, int ypos) {
     if (firstMouse) { lastX = static_cast<float>(xpos); lastY = static_cast<float>(ypos); firstMouse = false; }
     float xoffset = (xpos - lastX) * 0.1f, yoffset = (lastY - ypos) * 0.1f;
@@ -743,6 +766,7 @@ void mouseCallback(int xpos, int ypos) {
     glutPostRedisplay();
 }
 
+// Gestioneaza miscarea prin scena la apasarea tastelor (WASD + zbor liber)
 void keyboard(unsigned char key, int x, int y) {
     float speed = 15.0f;
     float rotSpeed = 2.0f;
@@ -776,6 +800,7 @@ void keyboard(unsigned char key, int x, int y) {
     glutPostRedisplay();
 }
 
+// Punctul de intrare in program: initializeaza GLUT, fereastra si loop-ul de randare
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
