@@ -131,7 +131,6 @@
     <ClCompile Include="objloader.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="CubGeometrie.h" />
     <ClInclude Include="objloader.hpp" />
     <ClInclude Include="ShaderUtils.h" />
     <ClInclude Include="stb_image.h" />

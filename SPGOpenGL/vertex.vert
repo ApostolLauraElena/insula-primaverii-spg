@@ -17,7 +17,7 @@ out vec3 normal;
 out vec3 pos;
 out vec3 localPos;
 out vec2 texCoord;
-out vec3 localPosUndisplaced; 
+//out vec3 localPosUndisplaced; 
 
 const float TWO_PI = 6.28318530718;
 
@@ -76,6 +76,6 @@ void main()
     normal = normalize(vec3(normalMatrix * vec4(vertexNormal, 0.0)));
     pos = worldPos.xyz;
     localPos = p;
-    localPosUndisplaced = origP; 
+    //localPosUndisplaced = origP; 
     texCoord = vTexCoord;
 }

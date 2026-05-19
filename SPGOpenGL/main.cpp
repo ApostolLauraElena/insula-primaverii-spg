@@ -8,7 +8,7 @@
 
 #include "objloader.hpp"
 #include "ShaderUtils.h"
-#include "CubGeometrie.h"
+
 #include <math.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -17,14 +17,12 @@ GLuint noiseTexture;
 GLuint waterNormalTexture;
 GLuint heightmapMaskTexture;
 #define PI glm::pi<float>()
-const float LAND_MASK_THRESHOLD = 0.08f;
-const float WATER_COAST_PADDING = 64.0f;
 
 // --- Global variables ---
 GLuint shader_programme;
 glm::mat4 projectionMatrix, viewMatrix, modelMatrix;
 
-GLuint vaoSeafloor, vboSeafloor;
+//GLuint vaoSeafloor, vboSeafloor;
 
 // Terrain geometry
 GLuint vaoObj, vboObj;
@@ -39,8 +37,6 @@ std::vector<glm::vec3> waterNormals;
 std::vector<glm::vec2> waterUvs;
 float waterLevel = 0.5f;
 
-// Cube (trees)
-GLuint vaoCub, vboCub;
 
 // Camera
 glm::vec3 cameraPos = glm::vec3(0.0f, 80.0f, 600.0f);
@@ -386,13 +382,6 @@ void init() {
     glLinkProgram(shader_programme);
     printProgramInfoLog(shader_programme);
 
-    glGenVertexArrays(1, &vaoCub); glGenBuffers(1, &vboCub);
-    glBindVertexArray(vaoCub); glBindBuffer(GL_ARRAY_BUFFER, vboCub);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(cubVertices), cubVertices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0); glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float))); glEnableVertexAttribArray(1);
-    glBindVertexArray(0);
-   
     loadOBJ("trunchi.obj", trunchiVertices, trunchiUvs, trunchiNormals);
     loadOBJ("frunze.obj", frunzeVertices, frunzeUvs, frunzeNormals);
 
@@ -566,7 +555,7 @@ void display() {
     glClearColor(0.5f, 0.8f, 0.9f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glUseProgram(shader_programme);
-
+    /*
     // --- Fundul marin opac (ascunde fundalul albastru la coasta) ---
     glUniform1i(glGetUniformLocation(shader_programme, "isWater"), 0);
     glUniform1i(glGetUniformLocation(shader_programme, "isGrass"), 0);
@@ -584,10 +573,9 @@ void display() {
     glBindVertexArray(vaoSeafloor);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glEnable(GL_CULL_FACE);
-
+    */
     lightPos = glm::vec3(2500.0f, 4500.0f, 2000.0f);
 
-    glUniform3fv(glGetUniformLocation(shader_programme, "lightPos"), 1, glm::value_ptr(lightPos));
     glUniform3fv(glGetUniformLocation(shader_programme, "lightPos"), 1, glm::value_ptr(lightPos));
     glUniform3fv(glGetUniformLocation(shader_programme, "viewPos"), 1, glm::value_ptr(cameraPos));
     glUniform1f(glGetUniformLocation(shader_programme, "time"), glutGet(GLUT_ELAPSED_TIME) / 1000.0f);
@@ -636,9 +624,6 @@ void display() {
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, heightmapMaskTexture);
     glUniform1i(glGetUniformLocation(shader_programme, "heightmapMaskTexture"), 2);
-    glUniform1f(glGetUniformLocation(shader_programme, "terrainSize"), 1024.0f);
-    glUniform1f(glGetUniformLocation(shader_programme, "landMaskThreshold"), LAND_MASK_THRESHOLD);
-    glUniform1f(glGetUniformLocation(shader_programme, "waterCoastPadding"), WATER_COAST_PADDING);
     glUniform1i(glGetUniformLocation(shader_programme, "isWater"), 1);
 
     glBindVertexArray(vaoWater);
