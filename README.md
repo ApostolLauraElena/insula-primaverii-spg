@@ -58,5 +58,3 @@
 ---
 
 ## 📸 Capturi de Ecran
-
-*(Aici poți urca imaginile salvate de tine pe parcursul proiectului pentru a oferi un preview vizual rapid. Recomand capturi care să pună în valoare iarba volumetrică, valurile și pădurea.)*
