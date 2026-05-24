@@ -149,7 +149,7 @@ void createWaterPlane(float waterSize, float terrainSize, int subdiviziuni, floa
         }
     }
 
-    std::cout << "Inelul de apa geometric a fost generat! Varfuri: " << out_v.size() << "\n";
+    std::cout << " apa a fost generata! Varfuri: " << out_v.size() << "\n";
 }
 
 // Citeste o imagine (heightmap) si genereaza teren 3D cu denivelari bazate pe culorile pixelilor
