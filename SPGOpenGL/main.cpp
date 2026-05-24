@@ -56,7 +56,7 @@ glm::vec3 viewPos(2, 3, 6);
 GLuint vaoSun, vboSun;
 GLuint sunTexture;
 
-// Geometrie Cires
+// --- Geometrie Cires ---
 // 1. Trunchi
 std::vector<glm::vec3> trunchiVertices;
 std::vector<glm::vec3> trunchiNormals;
@@ -149,7 +149,7 @@ void createWaterPlane(float waterSize, float terrainSize, int subdiviziuni, floa
         }
     }
 
-    std::cout << "Apa a fost generata! Varfuri: " << out_v.size() << "\n";
+    std::cout << " apa a fost generata! Varfuri: " << out_v.size() << "\n";
 }
 
 // Citeste o imagine (heightmap) si genereaza teren 3D cu denivelari bazate pe culorile pixelilor
