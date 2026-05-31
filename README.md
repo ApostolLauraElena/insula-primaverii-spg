@@ -58,3 +58,8 @@
 ---
 
 ## 📸 Capturi de Ecran
+<img width="975" height="571" alt="image" src="https://github.com/user-attachments/assets/4be60a02-2bb9-4faa-8ef4-64ad4015799a" />
+<img width="975" height="572" alt="image" src="https://github.com/user-attachments/assets/e2c90556-4592-4359-8b24-bc3fe6834517" />
+<img width="913" height="534" alt="image" src="https://github.com/user-attachments/assets/95a25d95-f931-40a2-8e38-45002071c384" />
+
+
